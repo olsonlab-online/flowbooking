@@ -227,9 +227,14 @@ tr:hover td{background:#ede8e2;}
 // ── Main ───────────────────────────────────────────────────────────────────
 async function main() {
   const today  = new Date();
-  const to     = dateKey(today);
-  const from4w = new Date(today); from4w.setDate(today.getDate()-28);
-  const from   = dateKey(from4w);
+  // Find Monday of current week
+  const day = today.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+  const diffToMon = (day === 0) ? -6 : 1 - day;
+  const monday = new Date(today); monday.setDate(today.getDate() + diffToMon);
+  // Sunday = Monday + 6
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+  const from = dateKey(monday);
+  const to   = dateKey(sunday);
 
   console.log(`Fetching bookings and blocks for ${from} → ${to} …`);
 
