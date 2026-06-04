@@ -1,0 +1,2044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Flow Cytometer Booking | HANS 301</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Supabase JS client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --primary:#3E4C54; --peach:#E4A489; --rust:#BC6C54; --sage:#9B9F91;
+      --linen:#E9D9C8; --khaki:#A69C7D; --bg:#2b3238; --surface:#343d44;
+      --surface2:#3a444c; --border:#4a5660; --border-light:#56646e;
+      --text:#E9D9C8; --text-mid:#c5b8a8; --text-dim:#8a9aa4;
+      --work-bg:#3d4d42; --work-border:#4e6254; --offhour-bg:#272e33; --normal-bg:#343d44;
+      --booked-bg:#5a4510; --booked-bg-past:#1e1804; --booked-border:#c8a84a;
+      --booked-text:#f0d890; --booked-pi:#c8a840;
+      --today-col-tint:rgba(228,164,137,.07);
+      --slot-h:68px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Google Sans','Segoe UI',Arial,sans-serif;font-size:17px;line-height:1.6;background:var(--bg);color:var(--text);min-height:100vh;}
+
+    /* HEADER */
+    header{border-bottom:2px solid var(--border);padding:22px 32px;display:flex;align-items:center;justify-content:space-between;background:var(--primary);position:sticky;top:0;z-index:100;}
+    .header-left h1{font-family:'Google Sans',sans-serif;font-weight:800;font-size:3rem;letter-spacing:-0.02em;color:var(--linen);line-height:1.1;}
+    .header-left h1 span{color:var(--peach);}
+    .header-left p{font-size:0.95rem;color:var(--sage);margin-top:4px;}
+    .header-right{display:flex;gap:12px;align-items:center;}
+
+    /* BUTTONS */
+    .btn{font-family:'Google Sans',sans-serif;font-size:1rem;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;border:2px solid var(--border-light);background:transparent;color:var(--text-mid);transition:all .15s;min-height:44px;}
+    .btn:hover{border-color:var(--peach);color:var(--peach);}
+    .btn-primary{background:var(--rust);color:var(--linen);border-color:var(--rust);font-weight:700;}
+    .btn-primary:hover{background:var(--peach);border-color:var(--peach);color:#2b2318;}
+    .btn-danger{border-color:#8b3030;color:#e07070;}
+    .btn-danger:hover{background:#7a2020;color:var(--linen);border-color:#7a2020;}
+    .btn-note{border-color:var(--khaki);color:var(--khaki);font-size:1rem;padding:7px 14px;min-height:36px;}
+    .btn-note:hover{border-color:var(--linen);color:var(--linen);}
+    .btn-export{border-color:#6a8a6a;color:#9aba9a;}
+    .btn-export:hover{background:#2d4a2d;border-color:#9aba9a;color:#c4dac4;}
+
+    main{max-width:1400px;margin:0 auto;padding:32px 24px;}
+
+    /* WEEK NAV */
+    .week-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+    .week-nav h2{font-family:'Google Sans',sans-serif;font-size:1.25rem;font-weight:700;color:var(--text);}
+    .week-nav-btns{display:flex;gap:8px;flex-wrap:wrap;}
+
+    /* CALENDAR */
+    .calendar{background:var(--surface);border:1px solid var(--border);border-radius:0;overflow:visible;width:100%;display:block;}
+    .cal-header{display:grid;grid-template-columns:90px repeat(7,1fr);border-bottom:2px solid var(--border);background:var(--primary);width:100%;}
+    .cal-header-cell{padding:14px 8px;text-align:center;font-size:1rem;font-weight:600;color:var(--sage);border-right:1px solid var(--border);}
+    .cal-header-cell:last-child{border-right:none;}
+    .cal-header-cell.today{color:var(--peach);}
+    .cal-header-cell .day-num{display:block;font-size:1.4rem;font-weight:800;font-family:'Google Sans',sans-serif;margin-top:2px;color:var(--text);}
+    .cal-header-cell.today .day-num{color:var(--peach);}
+    .cal-header-cell.weekend{color:#7a8a94;}
+    .cal-header-cell.weekend .day-num{color:#6a7a84;}
+    .cal-header-cell.today.weekend .day-num{color:var(--peach);}
+    .time-slot.weekend{background:#2e3538;}
+    .time-slot.weekend:not(.booked-cell):not(.past):not(.blocked-cell):hover{background:#363f45;box-shadow:inset 0 0 0 2px #4a5660;}
+    /* Today column highlight */
+    .time-slot.today-col:not(.booked-cell):not(.blocked-cell):not(.past){filter:brightness(1.22);}
+    .time-slot.today-col.booked-cell{filter:none;}
+    .time-slot.today-col.blocked-cell{filter:none;}
+
+    .cal-rows-wrapper{width:100%;overflow:visible;}
+    .cal-row{display:grid;grid-template-columns:90px repeat(7,1fr);border-bottom:1px solid var(--border);height:var(--slot-h);}
+    .cal-row:last-child{border-bottom:none;}
+    .time-label{padding:0 6px;font-size:1rem;font-weight:600;color:var(--text-dim);border-right:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;}
+    .time-label.work{color:var(--text-mid);}
+    .time-label.off{opacity:.6;}
+    .time-slot{height:var(--slot-h);cursor:pointer;transition:background .12s;border-right:1px solid var(--border);border-bottom:1px solid var(--border);}
+    .time-slot:last-child{border-right:none;}
+    .time-slot.work-hours{background:var(--work-bg);}
+    .time-slot.off-hours{background:var(--offhour-bg);}
+    .time-slot.normal{background:var(--normal-bg);}
+    .time-slot.past{opacity:.42;cursor:default;}
+    .time-slot.booked-cell{background:#5a4510;cursor:pointer;}
+    .time-slot.booked-cell.past{background:#1e1804;opacity:1;cursor:pointer;}
+    .time-slot:not(.booked-cell):not(.past):not(.blocked-cell):hover{background:rgba(228,164,137,.18);box-shadow:inset 0 0 0 2px rgba(228,164,137,.7);}
+    .time-slot.work-hours:not(.booked-cell):not(.past):not(.blocked-cell):hover{background:#4a5f4e;box-shadow:inset 0 0 0 2px rgba(228,164,137,.5);}
+
+    .offhours-toggle-row{display:grid;grid-template-columns:90px repeat(7,1fr);background:var(--offhour-bg);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;transition:background .15s;}
+    .offhours-toggle-row:hover{background:#2e3740;}
+    .offhours-toggle-label{grid-column:1/-1;padding:8px 16px;font-size:.82rem;font-weight:700;color:var(--khaki);display:flex;align-items:center;gap:8px;}
+    .toggle-icon{font-size:.72rem;transition:transform .2s;display:inline-block;}
+    .offhours-toggle-label.expanded .toggle-icon{transform:rotate(90deg);}
+
+    .time-slot.booked-cell{display:flex;flex-direction:column;justify-content:flex-start;padding:4px 6px;overflow:hidden;}
+    .time-slot.booked-cell .bk-name{font-weight:700;font-size:.78rem;color:#f0d890;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
+    .time-slot.booked-cell .bk-pi{font-size:.68rem;color:#c8a840;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin-top:1px;}
+    .time-slot.booked-cell .bk-period{font-size:.62rem;color:rgba(240,216,138,.7);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+    .time-slot.cluster-top{border-bottom:1px dashed rgba(240,216,138,.35);border-left:2px solid #c8a84a;border-right:2px solid #c8a84a;border-top:2px solid #c8a84a;border-radius:6px 6px 0 0;}
+    .time-slot.cluster-mid{border-top:none;border-bottom:1px dashed rgba(240,216,138,.35);border-left:2px solid #c8a84a;border-right:2px solid #c8a84a;}
+    .time-slot.cluster-bot{border-top:none;border-left:2px solid #c8a84a;border-right:2px solid #c8a84a;border-bottom:2px solid #c8a84a;border-radius:0 0 6px 6px;}
+    .time-slot.cluster-single{border:2px solid #c8a84a;border-radius:6px;}
+    .time-slot.blocked-cell{display:flex;flex-direction:column;justify-content:flex-start;padding:4px 6px;overflow:hidden;background:#7a2020;cursor:not-allowed;}
+    .time-slot.blocked-cell.past{background:#3d1010;opacity:1;}
+    .time-slot.blocked-cell .bk-name{font-weight:700;font-size:.78rem;color:#f0a0a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
+    .time-slot.blocked-cell .bk-period{font-size:.62rem;color:rgba(240,160,160,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin-top:1px;}
+    .time-slot.booked-cell:hover:not(.past){filter:brightness(1.15);cursor:pointer;}
+    .time-slot.blocked-cell:hover{filter:brightness(1.15);}
+    .time-slot.blocked-cell.cluster-top{border-bottom:1px dashed rgba(240,160,160,.35)!important;border-left:2px solid #c05050!important;border-right:2px solid #c05050!important;border-top:2px solid #c05050!important;border-radius:6px 6px 0 0;}
+    .time-slot.blocked-cell.cluster-mid{border-top:none!important;border-bottom:1px dashed rgba(240,160,160,.35)!important;border-left:2px solid #c05050!important;border-right:2px solid #c05050!important;}
+    .time-slot.blocked-cell.cluster-bot{border-top:none!important;border-left:2px solid #c05050!important;border-right:2px solid #c05050!important;border-bottom:2px solid #c05050!important;border-radius:0 0 6px 6px;}
+    .time-slot.blocked-cell.cluster-single{border:2px solid #c05050!important;border-radius:6px;}
+
+    /* Date chips */
+    .date-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(90,69,16,.4);border:1px solid rgba(200,168,74,.4);border-radius:20px;padding:5px 12px 5px 14px;font-size:.85rem;font-weight:600;color:#f0d890;white-space:nowrap;}
+    .date-chip button{background:none;border:none;color:#a88830;cursor:pointer;font-size:.9rem;padding:0;line-height:1;font-weight:700;}
+    .date-chip button:hover{color:#c8a840;}
+    .date-chip.red{background:rgba(80,15,15,.6);border-color:rgba(160,60,60,.5);color:#e0a0a0;}
+    .date-chip.red button{color:#c06060;}
+    .date-chip.red button:hover{color:#e08080;}
+
+    /* Legend */
+    .legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:18px;font-size:.9rem;color:var(--text-mid);}
+    .legend-item{display:flex;align-items:center;gap:8px;font-weight:600;}
+    .legend-dot{width:14px;height:14px;border-radius:3px;}
+    .legend-dot.work{background:var(--work-bg);border:1px solid var(--work-border);}
+    .legend-dot.offhour{background:var(--offhour-bg);border:1px solid var(--border);}
+    .legend-dot.booked{background:#6a5420;border:1px solid #c8a84a;}
+    .legend-dot.booked-past{background:#3a2d08;border:1px solid #8a7030;}
+    .legend-dot.past{background:rgba(0,0,0,.3);border:1px solid #555;}
+
+    /* MODALS */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(20,25,28,.82);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;}
+    .modal-overlay.open{display:flex;}
+    .modal{background:var(--surface2);border:1px solid var(--border-light);border-radius:14px;padding:32px;width:100%;max-width:500px;position:relative;max-height:90vh}
+    .modal h3{font-family:'Google Sans',sans-serif;font-size:1.3rem;font-weight:800;color:var(--linen);margin-bottom:8px;}
+    .modal .slot-info{font-size:.95rem;font-weight:600;color:var(--peach);margin-bottom:22px;padding:10px 14px;background:rgba(228,164,137,.1);border-radius:8px;border:1px solid rgba(228,164,137,.25);}
+    .form-group{margin-bottom:18px;}
+    .form-group label{display:block;font-size:.95rem;font-weight:700;color:var(--text-mid);margin-bottom:6px;}
+    .form-group select{width:100%;background:var(--surface);border:2px solid rgba(200,168,74,.3);border-radius:8px;padding:10px 14px;font-family:'Google Sans',sans-serif;font-size:.95rem;color:var(--text);outline:none;min-height:44px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23e8dcc8' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer;}
+    .form-group select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,168,74,.15);}
+    .form-group select option{background:#1e1a10;color:var(--text);}
+    .form-group select option[value="__new__"]{color:#70d0d0;font-style:italic;}
+    /* Chevron for ALL selects matching text color */
+    select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23e8dcc8' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") !important;background-repeat:no-repeat !important;background-position:right 10px center !important;padding-right:28px !important;cursor:pointer;}
+    .form-group input,.form-group textarea{width:100%;background:var(--surface);border:2px solid var(--border);border-radius:8px;padding:11px 15px;font-family:'Google Sans',sans-serif;font-size:1rem;color:var(--text);outline:none;transition:border-color .15s;min-height:46px;}
+    .form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:var(--peach);}
+    /* Suppress browser-native password reveal button */
+    input[type="password"]::-ms-reveal,
+    input[type="password"]::-ms-clear,
+    input[type="password"]::-webkit-contacts-auto-fill-button,
+    input[type="password"]::-webkit-credentials-auto-fill-button { display:none !important; }
+    input[type="password"] { -webkit-text-security: disc; }
+    .form-group textarea{min-height:80px;resize:vertical;}
+    .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap;}
+    .modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1.3rem;line-height:1;}
+    .modal-close:hover{color:var(--text);}
+
+    .booking-detail p{font-size:1rem;color:var(--text);margin-bottom:11px;display:flex;gap:12px;}
+    .booking-detail p span:first-child{color:var(--text-dim);width:90px;flex-shrink:0;font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding-top:3px;}
+    .past-warning{font-size:.82rem;color:var(--booked-pi);background:rgba(90,32,32,.35);border:1px solid #7a3030;border-radius:6px;padding:8px 12px;margin-bottom:16px;}
+
+    /* ADMIN */
+    .admin-link{font-size:.9rem;font-weight:600;color:var(--text-dim);text-decoration:underline;cursor:pointer;transition:color .15s;}
+    .admin-link:hover{color:var(--text-mid);}
+    .admin-panel{display:none;}
+    .admin-panel.open{display:block;}
+    .booking-page.hidden{display:none;}
+    .section-title{font-family:'Google Sans',sans-serif;font-weight:800;font-size:1.1rem;margin-bottom:16px;color:var(--linen);}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:26px;margin-bottom:24px;}
+    .admin-table{width:100%;border-collapse:collapse;font-size:.93rem;}
+    .admin-table th{text-align:left;padding:11px 14px;color:var(--text-mid);font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:2px solid var(--border);}
+    .admin-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-mid);}
+    .admin-table tr:last-child td{border-bottom:none;}
+    .admin-table tr:hover td{background:var(--surface2);}
+    .multi-date-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+    .tag-chip{background:rgba(60,74,84,.8);border:1px solid var(--border-light);border-radius:6px;padding:4px 10px;font-size:.82rem;color:var(--text-mid);display:inline-flex;align-items:center;gap:6px;}
+    .tag-chip button{background:none;border:none;color:#c07070;cursor:pointer;font-size:.85rem;padding:0;line-height:1;}
+    input[type="date"],input[type="time"]{color-scheme:dark;}
+    #blockDateInput{color-scheme:dark;}
+    .tag-chip button:hover{color:#e07070;}
+
+    .date-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;min-height:44px;}
+    .date-grid-item{background:var(--surface);border:2px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.9rem;color:var(--text-mid);}
+    .date-grid-item .date-val{font-weight:600;color:var(--text);}
+    .date-grid-item .remove-date{background:none;border:none;color:#c07070;cursor:pointer;font-size:1rem;padding:0 4px;font-family:inherit;font-weight:700;}
+    .date-grid-item .remove-date:hover{color:#e07070;}
+    .date-grid-empty{color:var(--text-dim);font-size:.85rem;font-style:italic;grid-column:1/-1;padding:8px 0;}
+
+    .export-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-top:16px;}
+    .export-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;}
+
+    /* Supabase status indicator */
+    .db-status{display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:600;}
+    .db-dot{width:8px;height:8px;border-radius:50%;background:var(--sage);}
+    .db-dot.connected{background:#6aba6a;box-shadow:0 0 6px rgba(106,186,106,.5);}
+    .db-dot.error{background:#e07070;}
+    .db-dot.loading{animation:pulse 1s infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+    /* TOAST */
+    .toast{position:fixed;bottom:28px;right:28px;background:var(--surface2);border:2px solid var(--peach);border-radius:10px;padding:13px 22px;font-size:1rem;font-weight:600;color:var(--peach);z-index:999;transform:translateY(80px);opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);}
+    .toast.show{transform:translateY(0);opacity:1;}
+    .toast.error{border-color:#c05050;color:#e07070;}
+
+    @media(max-width:700px){
+      .cal-header,.offhours-toggle-row,.cal-row{grid-template-columns:60px repeat(7,1fr);}
+      .time-label{font-size:.62rem;padding-right:4px;}
+      .cal-header-cell{font-size:.65rem;padding:8px 2px;}
+      main{padding:14px 8px;}
+      header{padding:14px 16px;}
+      .header-left h1{font-size:1.8rem;}
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Flow Cytometer <span>HANS 301</span></h1>
+    <p>⚠️ Use the same device you booked with to make changes. For assistance, contact the Olson lab.</p>
+  </div>
+  <div class="header-right">
+    <div class="db-status">
+      <div class="db-dot loading" id="dbDot"></div>
+      <span id="dbLabel" style="color:var(--text-dim)">Connecting…</span>
+    </div>
+    <button class="btn" onclick="showAdmin()">Admin</button>
+  </div>
+</header>
+
+<!-- BOOKING PAGE -->
+<div class="booking-page" id="bookingPage">
+  <main>
+    <div class="week-nav">
+      <h2 id="weekLabel"></h2>
+      <div class="week-nav-btns">
+        <button class="btn" id="prevWeekBtn" onclick="changeWeek(-1)">← Prev</button>
+        <button class="btn" onclick="goToday()">Today</button>
+        <button class="btn" id="nextWeekBtn" onclick="changeWeek(1)">Next →</button>
+      </div>
+    </div>
+    <div class="calendar" id="calendar"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot work"></div> Working hours (09:00–17:00)</div>
+      <div class="legend-item"><div class="legend-dot offhour"></div> Off hours</div>
+      <div class="legend-item"><div class="legend-dot booked"></div> Booked</div>
+      <div class="legend-item"><div class="legend-dot booked-past"></div> Booked (past)</div>
+      <div class="legend-item"><div class="legend-dot past"></div> Past / unavailable</div>
+    </div>
+    <p style="font-size:.9rem;color:var(--text-dim);margin-top:16px;text-align:right;"><span class="admin-link" onclick="showAdmin()">Admin panel</span></p>
+  </main>
+</div>
+
+<!-- ADMIN PAGE -->
+<div class="admin-panel" id="adminPanel">
+  <main>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <h2 class="section-title" style="margin:0">Admin Panel</h2>
+      <button class="btn" onclick="hideAdmin()">← Back to Calendar</button>
+    </div>
+
+    <!-- Bookings: add + table merged — golden theme -->
+    <div class="card" style="border-color:rgba(200,168,74,.35);background:linear-gradient(135deg,#2a2010 0%,var(--surface) 60%);">
+      <div class="section-title" style="font-size:.9rem;margin-bottom:14px;color:#f0d890;">📋 Bookings</div>
+
+      <!-- Add Booking form -->
+      <div style="background:rgba(90,69,16,.3);border:1px solid rgba(200,168,74,.3);border-radius:8px;padding:16px;margin-bottom:18px;">
+        <div style="font-size:.85rem;font-weight:700;color:#c8a840;margin-bottom:12px;">Add Booking (Admin)</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+          <div class="form-group" style="margin:0"><label style="font-size:.78rem;color:#a88830;">Start Time</label><select id="adminBookStart" style="width:140px;background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:8px 10px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none"></select></div>
+          <div class="form-group" style="margin:0"><label style="font-size:.78rem;color:#a88830;">End Time</label><select id="adminBookEnd" style="width:140px;background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:8px 10px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none"></select></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <div class="form-group" style="margin:0;flex:1;min-width:160px;"><label style="font-size:.78rem;color:#a88830;">Name *</label>
+            <select id="adminBookNameSelect" onchange="handleAdminNameSelect()" style="width:100%;background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;min-height:44px;margin-bottom:6px;">
+              <option value="">— Select name —</option>
+              <option value="__new__" style="color:#70d0d0;font-style:italic;">+ New user</option>
+            </select>
+            <input type="text" id="adminBookName" placeholder="Enter name" autocomplete="off" onblur="this.value=normName(this.value)" style="display:none;width:100%;background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.95rem;color:var(--text);outline:none;min-height:44px;"></div>
+          <div class="form-group" style="margin:0;flex:1;min-width:160px;"><label style="font-size:.78rem;color:#a88830;">PI / Lab *</label>
+            <select id="adminBookPISelect" onchange="handleAdminPISelect()" style="width:100%;background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;min-height:44px;margin-bottom:6px;">
+              <option value="">— Select PI / lab —</option>
+              <option value="__new__" style="color:#70d0d0;font-style:italic;">+ New lab</option>
+            </select>
+            <input type="text" id="adminBookPI" placeholder="Enter PI / lab name" autocomplete="off" onblur="this.value=normName(this.value)" style="display:none;width:100%;background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.95rem;color:var(--text);outline:none;min-height:44px;"></div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;"><label style="font-size:.78rem;color:#a88830;">Notes (optional)</label><textarea id="adminBookNotes" placeholder="Sample type, experiment, etc." style="width:100%;min-height:60px;resize:vertical;background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:8px 10px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;"></textarea></div>
+        <div style="margin-bottom:10px;">
+          <div style="font-size:.78rem;font-weight:700;color:#a88830;margin-bottom:8px;">Dates</div>
+          <div id="adminBookDatesDisplay" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+            <div style="position:relative;display:inline-flex;align-items:center;">
+              <input type="text" id="adminBookDateInline" placeholder="MM/DD/YYYY" maxlength="10" oninput="dateMask(this)" style="background:#1e1808;border:2px solid rgba(200,168,74,.4);border-radius:8px;padding:7px 36px 7px 10px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;min-height:38px;width:160px;letter-spacing:.04em;">
+              <span onclick="(()=>{const p=document.getElementById('adminBookDatePicker');p.value='';p.showPicker?p.showPicker():p.click()})()" style="position:absolute;right:8px;cursor:pointer;font-size:1rem;color:#c8a840;user-select:none;" title="Pick date">📅</span>
+              <input type="date" id="adminBookDatePicker" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" onchange="syncDatePicker('adminBookDatePicker','adminBookDateInline')">
+            </div>
+            <button class="btn" style="padding:6px 16px;min-height:38px;font-size:.9rem;border-color:rgba(200,168,74,.5);color:#c8a840;" onclick="addAdminBookDateInline()">Add Date</button>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <button class="btn" style="background:#7a6010;border-color:#c8a840;color:#f0d890;font-weight:700;padding:10px 20px;" onclick="adminAddBooking()">Save Booking(s)</button>
+        </div>
+      </div>
+
+      <!-- All Bookings table -->
+      <div id="adminTableWrapper" style="max-height:420px;overflow-y:auto;border:1px solid rgba(200,168,74,.2);border-radius:8px;">
+      <table class="admin-table" style="margin:0;">
+        <thead><tr><th style="color:#c8a840;position:sticky;top:0;background:#2a2010;z-index:1;">Date</th><th style="color:#c8a840;position:sticky;top:0;background:#2a2010;z-index:1;">Time</th><th style="color:#c8a840;position:sticky;top:0;background:#2a2010;z-index:1;">Dur.</th><th style="color:#c8a840;position:sticky;top:0;background:#2a2010;z-index:1;">Name</th><th style="color:#c8a840;position:sticky;top:0;background:#2a2010;z-index:1;">PI</th><th style="color:#c8a840;position:sticky;top:0;background:#2a2010;z-index:1;">Notes</th><th style="color:#c8a840;position:sticky;top:0;background:#2a2010;z-index:1;">Action</th></tr></thead>
+        <tbody id="adminTableBody"></tbody>
+      </table>
+      </div>
+    </div>
+
+    <!-- Block management — dark red theme -->
+    <div class="card" style="border-color:rgba(160,40,40,.5);background:linear-gradient(135deg,#2a1a1a 0%,var(--surface) 60%);">
+      <div class="section-title" style="font-size:.9rem;margin-bottom:14px;color:#e08080;">🔒 Maintenance / Blocked Periods</div>
+      <div style="background:rgba(100,20,20,.35);border:1px solid rgba(160,40,40,.4);border-radius:8px;padding:16px;margin-bottom:18px;">
+        <div style="font-size:.85rem;font-weight:700;color:#c07070;margin-bottom:12px;">Add Block</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+          <div class="form-group" style="margin:0"><label style="font-size:.78rem;color:#b06060;">Start Time</label><select id="blockStart" style="width:140px;background:#2a1515;border:2px solid rgba(160,60,60,.5);border-radius:8px;padding:8px 10px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none"></select></div>
+          <div class="form-group" style="margin:0"><label style="font-size:.78rem;color:#b06060;">End Time</label><select id="blockEnd" style="width:140px;background:#2a1515;border:2px solid rgba(160,60,60,.5);border-radius:8px;padding:8px 10px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none"></select></div>
+          <div class="form-group" style="margin:0"><label style="font-size:.78rem;color:#b06060;">Reason</label><input type="text" id="blockReason" placeholder="e.g. Maintenance" style="width:180px;background:#2a1515;border:2px solid rgba(160,60,60,.5);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.95rem;color:var(--text);outline:none;min-height:44px;"></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="font-size:.78rem;font-weight:700;color:#b06060;margin-bottom:8px;">Dates</div>
+          <div id="blockDatesDisplay" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;"></div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <div style="position:relative;display:inline-flex;align-items:center;">
+              <input type="text" id="blockDateInline" placeholder="MM/DD/YYYY" maxlength="10" oninput="dateMask(this)" style="background:#2a1515;border:2px solid rgba(160,60,60,.5);border-radius:8px;padding:7px 36px 7px 10px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;min-height:38px;width:160px;letter-spacing:.04em;">
+              <span onclick="(()=>{const p=document.getElementById('blockDatePicker');p.value='';p.showPicker?p.showPicker():p.click()})()" style="position:absolute;right:8px;cursor:pointer;font-size:1rem;color:#c08080;user-select:none;" title="Pick date">📅</span>
+              <input type="date" id="blockDatePicker" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" onchange="syncDatePicker('blockDatePicker','blockDateInline')">
+            </div>
+            <button class="btn" style="padding:6px 16px;min-height:38px;font-size:.9rem;border-color:rgba(160,60,60,.6);color:#c08080;" onclick="addBlockDateInline()">Add Date</button>
+          </div>
+        </div>
+        <button class="btn" style="background:#7a2020;border-color:#a03030;color:#f0c0c0;font-weight:700;padding:10px 20px;" onclick="addBlock()">Save Block(s)</button>
+      </div>
+      <div id="blocksTableWrapper" style="max-height:320px;overflow-y:auto;border:1px solid rgba(160,40,40,.3);border-radius:8px;">
+      <table class="admin-table" style="margin:0;">
+        <thead><tr><th style="color:#c07070;position:sticky;top:0;background:#2a1a1a;z-index:1;">Date</th><th style="color:#c07070;position:sticky;top:0;background:#2a1a1a;z-index:1;">Time</th><th style="color:#c07070;position:sticky;top:0;background:#2a1a1a;z-index:1;">Reason</th><th style="color:#c07070;position:sticky;top:0;background:#2a1a1a;z-index:1;">Action</th></tr></thead>
+        <tbody id="blocksTableBody"></tbody>
+      </table>
+      </div>
+    </div>
+
+    <!-- User Directory — teal theme -->
+    <div class="card" style="border-color:rgba(60,140,140,.5);background:linear-gradient(135deg,#0e2a2a 0%,var(--surface) 60%);">
+      <div class="section-title" style="font-size:.9rem;margin-bottom:14px;color:#70d0d0;">👤 User Directory</div>
+      <div style="background:rgba(20,70,70,.35);border:1px solid rgba(60,140,140,.4);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <div style="font-size:.85rem;font-weight:700;color:#60c0c0;margin-bottom:10px;">Add User</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+          <div class="form-group" style="margin:0;flex:1;min-width:140px;"><label style="font-size:.78rem;color:#50a0a0;">Name *</label>
+            <input type="text" id="dirAddName" placeholder="e.g. Liam" autocomplete="off" onblur="this.value=normName(this.value)" style="width:100%;background:#0a2020;border:2px solid rgba(60,140,140,.4);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;min-height:40px;"></div>
+          <div class="form-group" style="margin:0;flex:1;min-width:140px;"><label style="font-size:.78rem;color:#50a0a0;">PI / Lab *</label>
+            <input type="text" id="dirAddPI" placeholder="e.g. Olson" autocomplete="off" onblur="this.value=normName(this.value)" style="width:100%;background:#0a2020;border:2px solid rgba(60,140,140,.4);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;min-height:40px;"></div>
+          <button class="btn" style="padding:8px 18px;min-height:40px;font-size:.9rem;border-color:rgba(60,140,140,.6);color:#70d0d0;" onclick="dirAddUser()">Add</button>
+        </div>
+      </div>
+      <div style="max-height:300px;overflow-y:auto;border:1px solid rgba(60,140,140,.2);border-radius:8px;">
+        <table class="admin-table" style="margin:0;">
+          <thead><tr>
+            <th style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">Name</th>
+            <th style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">PI / Lab</th>
+            <th style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">Action</th>
+          </tr></thead>
+          <tbody id="dirTableBody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+        <button class="btn" id="dirSaveBtn" style="display:none;padding:8px 20px;min-height:36px;font-size:.88rem;border-color:rgba(60,140,140,.6);color:#70d0d0;background:rgba(20,70,70,.4);" onclick="dirSaveAllChanges()">💾 Save Change(s)</button>
+      </div>
+    </div>
+
+    <!-- Export -->
+    <div class="card">
+      <div class="section-title" style="font-size:.9rem;margin-bottom:14px">Export Usage Report</div>
+      <div class="export-row">
+        <div class="form-group" style="margin:0"><label style="font-size:.82rem">From Date</label><input type="date" id="exportFrom" style="width:170px"></div>
+        <div class="form-group" style="margin:0"><label style="font-size:.82rem">To Date</label><input type="date" id="exportTo" style="width:170px"></div>
+        <button class="btn btn-export" onclick="exportReport()">Download CSV</button>
+        <button class="btn btn-export" onclick="exportReportHTML()">Download HTML Report</button>
+      </div>
+      <p style="font-size:.82rem;color:var(--text-dim)">Report includes booking time, block/maintenance time per week and totals.</p>
+    </div>
+
+  </main>
+</div>
+
+<!-- BOOK MODAL -->
+<div class="modal-overlay" id="bookModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('bookModal')">✕</button>
+    <h3>Book Time Slot</h3>
+    <div class="slot-info" id="bookSlotInfo"></div>
+    <div style="display:flex;gap:16px;margin-bottom:18px;flex-wrap:wrap;">
+      <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+        <label>Start Time</label>
+        <select id="bookStartTime" style="background:var(--surface);border:2px solid var(--border);border-radius:8px;padding:8px 10px;font-family:'Google Sans',sans-serif;font-size:.95rem;color:var(--text);outline:none;min-height:44px;transition:border-color .15s;width:100%"></select>
+      </div>
+      <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+        <label>End Time</label>
+        <select id="bookEndTime" onchange="updateBookSlotInfo()" style="background:var(--surface);border:2px solid var(--border);border-radius:8px;padding:8px 10px;font-family:'Google Sans',sans-serif;font-size:.95rem;color:var(--text);outline:none;min-height:44px;transition:border-color .15s;width:100%"></select>
+      </div>
+    </div>
+    <div id="bookConflictMsg" style="display:none;color:#e07070;font-size:.85rem;margin-bottom:12px;padding:8px 12px;background:rgba(90,32,32,.35);border-radius:6px;border:1px solid #7a3030;"></div>
+    <div class="form-group">
+      <label>Your Name *</label>
+      <select id="bookNameSelect" onchange="handleNameSelect()" style="width:100%;margin-bottom:6px;">
+        <option value="">— Select your name —</option>
+        <option value="__new__">+ New user</option>
+      </select>
+      <input type="text" id="bookName" placeholder="Enter your name" style="display:none;" onblur="this.value=normName(this.value)"/>
+    </div>
+    <div class="form-group">
+      <label>PI / Lab Name *</label>
+      <select id="bookPISelect" onchange="handlePISelect()" style="width:100%;margin-bottom:6px;">
+        <option value="">— Select PI / lab —</option>
+        <option value="__new__">+ New lab</option>
+      </select>
+      <input type="text" id="bookPI" placeholder="Enter PI / lab name" style="display:none;" onblur="this.value=normName(this.value)"/>
+    </div>
+    <div class="form-group"><label>Notes (optional)</label><textarea id="bookNotes" placeholder="Sample type, experiment, etc."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('bookModal')">Cancel</button>
+      <button class="btn btn-primary" id="confirmBookBtn" onclick="confirmBooking()">Confirm Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW MODAL -->
+<div class="modal-overlay" id="viewModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('viewModal')">✕</button>
+    <h3>Booking Details</h3>
+    <div class="slot-info" id="viewSlotInfo"></div>
+    <div id="viewPastWarning" class="past-warning" style="display:none">This booking time has passed. Notes can still be edited.</div>
+    <div class="booking-detail" id="viewDetails"></div>
+    <div class="form-group"><label>Notes</label><textarea id="viewNotesInput" placeholder="Add notes about this session..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('viewModal')">Close</button>
+      <button class="btn btn-note" onclick="saveNotes()">Save Notes</button>
+      <button class="btn btn-danger" id="cancelBookingBtn" onclick="cancelCurrentBooking()">Remove Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN LOGIN -->
+<div class="modal-overlay" id="adminLoginModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('adminLoginModal')">✕</button>
+    <h3>Admin Access</h3>
+    <p style="font-size:.9rem;color:var(--text-dim);margin-bottom:20px">Enter the admin password to continue.</p>
+    <div class="form-group">
+      <label>Password</label>
+      <div style="position:relative;">
+        <input type="password" id="adminPassword" placeholder="••••••••" autocomplete="new-password" onkeydown="if(event.key==='Enter')checkAdminPw()" style="padding-right:44px;"/>
+        <button type="button" onclick="const i=document.getElementById('adminPassword');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'🙈':'🙊';"
+          style="position:absolute;right:0;top:0;height:100%;width:42px;background:none;border:none;cursor:pointer;font-size:1rem;color:#fff;opacity:.75;display:flex;align-items:center;justify-content:center;">🙊</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('adminLoginModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="checkAdminPw()">Enter</button>
+    </div>
+  </div>
+</div>
+
+<!-- EXPORT MODAL -->
+<div class="modal-overlay" id="exportModal">
+  <div class="modal" style="max-width:420px">
+    <button class="modal-close" onclick="closeModal('exportModal')">✕</button>
+    <h3>Export Usage Report</h3>
+    <div class="form-group"><label>From Date</label><input type="date" id="exportFromModal"></div>
+    <div class="form-group"><label>To Date</label><input type="date" id="exportToModal"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('exportModal')">Cancel</button>
+      <button class="btn btn-export" onclick="exportFromModal('csv')">Download CSV</button>
+      <button class="btn btn-export" onclick="exportFromModal('html')">Download HTML</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// CONFIG — injected at build/deploy time via environment variables.
+// On GitHub Pages use a build step (e.g. sed / envsubst) to replace
+// these placeholders, OR host on Netlify/Vercel with their env injection.
+//
+// Required GitHub Secrets / env vars:
+//   SUPABASE_URL       — e.g. https://xyzxyz.supabase.co
+//   SUPABASE_ANON_KEY  — your project's public anon key
+//   ADMIN_PASSWORD     — admin panel password
+// ══════════════════════════════════════════
+const SUPABASE_URL      = 'https://qnxpcvhljzpfogindxpb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFueHBjdmhsanpwZm9naW5keHBiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDcxMzAsImV4cCI6MjA5NjA4MzEzMH0.sKX9RSe94EPhncoJlK3m1MhjptZGtk9KwUQYzv6MHK4';
+const ADMIN_PASSWORD_HASH = '39d15e1d7e45337d6b89d317ed61e6875ac30cf3057a53e6d6b7d9a2d26728d8';
+
+// ── Slot / time constants ─────────────────
+const SLOT_H               = 68;
+const SLOT_NIGHT_EARLY_START = 0,  SLOT_NIGHT_EARLY_END = 12;
+const SLOT_WORK_START        = 18, SLOT_WORK_END        = 33;
+const SLOT_NIGHT_LATE_START  = 40, SLOT_NIGHT_LATE_END  = 47;
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ══════════════════════════════════════════
+// SUPABASE CLIENT
+// ══════════════════════════════════════════
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ══════════════════════════════════════════
+// IN-MEMORY STATE  (loaded from Supabase on init, kept in sync via realtime)
+// ══════════════════════════════════════════
+let bookingsMap = {};  // key: "YYYY-MM-DD_slot" → booking row object
+let blocksList  = [];  // array of block row objects
+let usersList   = [];  // array of {id, name, pi} from users table
+
+let deviceSig = '';    // stable device fingerprint stored in localStorage
+
+let currentWeekOffset = 0, pendingSlot = null, currentViewKey = null;
+let isAdminAuthed = false, nightEarlyExpanded = false, nightLateExpanded = false;
+let blockPendingDates = [];
+let adminBookPendingDates = [];
+
+// ══════════════════════════════════════════
+// UTILITIES
+// ══════════════════════════════════════════
+function slotToValue(s){
+  // Internal 24hr string used as select option value and parsed by timeStrToSlot
+  if(s===48) return '24:00';
+  return `${String(Math.floor(s/2)).padStart(2,'0')}:${s%2===0?'00':'30'}`;
+}
+function slotToLabel(s){
+  // Human-readable 12hr display
+  if(s===48) return '12:00 am';
+  const h24=Math.floor(s/2), m=s%2===0?'00':'30';
+  if(h24===0)  return `12:${m} am`;
+  if(h24===12) return `12:${m} pm`;
+  return h24<12 ? `${h24}:${m} am` : `${h24-12}:${m} pm`;
+}
+function timeLabel(value){
+  // Convert a 24hr value string to 12hr label
+  if(value==='24:00') return '12:00 am';
+  const[h,m]=value.split(':').map(Number);
+  if(h===0)  return `12:${String(m).padStart(2,'0')} am`;
+  if(h===12) return `12:${String(m).padStart(2,'0')} pm`;
+  return h<12 ? `${h}:${String(m).padStart(2,'0')} am` : `${h-12}:${String(m).padStart(2,'0')} pm`;
+}
+function dateKey(d)    { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function fmtDate(ds)   { const[y,m,d]=ds.split('-'); return `${m}/${d}/${y}`; }
+function bookingKey(ds,s){ return `${ds}_${s}`; }
+function escHtml(s)    { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function makeClusterKey(){ return `ck_${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
+function timeStrToSlot(t){ if(t==='24:00') return 48; const[h,m]=t.split(':').map(Number); return h*2+(m>=30?1:0); }
+
+// ── Device fingerprint ────────────────────
+function getDeviceSig(){
+  const stored=localStorage.getItem('fc_device_sig');
+  if(stored) return stored;
+  const raw=[
+    navigator.userAgent,
+    navigator.language,
+    screen.width+'x'+screen.height,
+    screen.colorDepth,
+    new Date().getTimezoneOffset(),
+    navigator.hardwareConcurrency||'',
+    navigator.platform||''
+  ].join('|');
+  // Simple non-crypto hash (FNV-1a style)
+  let h=2166136261;
+  for(let i=0;i<raw.length;i++){h^=raw.charCodeAt(i);h=(h*16777619)>>>0;}
+  const sig='ds_'+h.toString(36);
+  localStorage.setItem('fc_device_sig',sig);
+  return sig;
+}
+
+// ── Name / PI normalizer: title-case, trim ─
+// Capitalizes first letter of each word AND each hyphen-separated segment
+// e.g. 'o-brain' → 'O-Brain', 'john doe' → 'John Doe', 'OLSON' → 'Olson'
+function normName(raw){
+  if(!raw) return '';
+  return raw.trim()
+    .split(' ')
+    .map(word => word.split('-').map(seg => seg.split('/').map(s => s ? s.charAt(0).toUpperCase()+s.slice(1).toLowerCase() : '').join('/')).join('-'))
+    .join(' ');
+}
+
+function isSlotPast(dateObj,slot){
+  const t=new Date(dateObj); t.setHours(Math.floor(slot/2),slot%2===0?0:30,0,0); return t<new Date();
+}
+function isSlotBlocked(dateStr,slot){
+  const sm=slot*30;
+  for(const b of blocksList){
+    if(b.date_str!==dateStr) continue;
+    const[sh,sm2]=b.start_time.split(':').map(Number);
+    const[eh,em] =b.end_time.split(':').map(Number);
+    if(sm>=sh*60+sm2 && sm<eh*60+em) return b;
+  }
+  return null;
+}
+function isWithinBookingWindow(date){
+  const now=new Date(); now.setHours(0,0,0,0);
+  const lim=new Date(now); lim.setDate(lim.getDate()+35);
+  return date>=now && date<lim;
+}
+function isNightEarly(s){return s>=SLOT_NIGHT_EARLY_START&&s<=SLOT_NIGHT_EARLY_END;}
+function isNightLate(s) {return s>=SLOT_NIGHT_LATE_START &&s<=SLOT_NIGHT_LATE_END;}
+function isWorkHour(s)  {return s>=SLOT_WORK_START        &&s<=SLOT_WORK_END;}
+
+// ══════════════════════════════════════════
+// SUPABASE DATA LOADING
+// ══════════════════════════════════════════
+async function loadAllData(){
+  deviceSig = getDeviceSig();
+  setDbStatus('loading');
+  try {
+    const [bRes, blRes, uRes] = await Promise.all([
+      db.from('bookings').select('*'),
+      db.from('blocks').select('*'),
+      db.from('users').select('*').order('name',{ascending:true})
+    ]);
+    if(bRes.error)  throw bRes.error;
+    if(blRes.error) throw blRes.error;
+    // users table may not exist yet — fail gracefully
+    if(!uRes.error) usersList = uRes.data||[];
+
+    // Rebuild bookingsMap
+    bookingsMap = {};
+    for(const row of bRes.data){
+      bookingsMap[bookingKey(row.date_str, row.slot)] = row;
+    }
+    blocksList = blRes.data;
+    setDbStatus('connected');
+    populateDataLists();
+    renderCalendar();
+  } catch(e){
+    console.error('Supabase load error:', e);
+    setDbStatus('error');
+    showToast('Database error: ' + e.message, true);
+  }
+}
+
+function setDbStatus(state){
+  const dot   = document.getElementById('dbDot');
+  const label = document.getElementById('dbLabel');
+  dot.className   = 'db-dot ' + state;
+  label.textContent = state==='connected' ? 'Live' : state==='error' ? 'DB Error' : 'Connecting…';
+  label.style.color = state==='connected' ? '#6aba6a' : state==='error' ? '#e07070' : 'var(--text-dim)';
+}
+
+// ══════════════════════════════════════════
+// REALTIME SUBSCRIPTIONS
+// ══════════════════════════════════════════
+function subscribeRealtime(){
+  db.channel('booking-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, payload => {
+      handleBookingChange(payload);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' }, payload => {
+      handleBlockChange(payload);
+    })
+    .subscribe();
+}
+
+function handleBookingChange(payload){
+  const { eventType, new: newRow, old: oldRow } = payload;
+  if(eventType === 'INSERT' || eventType === 'UPDATE'){
+    bookingsMap[bookingKey(newRow.date_str, newRow.slot)] = newRow;
+  } else if(eventType === 'DELETE'){
+    delete bookingsMap[bookingKey(oldRow.date_str, oldRow.slot)];
+  }
+  renderCalendar();
+  if(isAdminAuthed) renderAdminPanel();
+}
+
+let suppressBlockRealtime = false; // set true during bulk addBlock ops
+
+function handleBlockChange(payload){
+  if(suppressBlockRealtime) return; // ignore realtime during bulk ops
+  const { eventType, new: newRow, old: oldRow } = payload;
+  if(eventType === 'INSERT'){
+    // Deduplicate — realtime can fire after a manual reload already added the row
+    if(!blocksList.some(b=>b.id===newRow.id)) blocksList.push(newRow);
+  } else if(eventType === 'DELETE'){
+    blocksList = blocksList.filter(b => b.id !== oldRow.id);
+  }
+  renderCalendar();
+  if(isAdminAuthed) renderBlocksTable();
+}
+
+// ══════════════════════════════════════════
+// WEEK NAV
+// ══════════════════════════════════════════
+function getWeekStart(offset=0){
+  const t=new Date(); t.setHours(0,0,0,0);
+  t.setDate(t.getDate()-t.getDay()+offset*7); return t;
+}
+function changeWeek(dir){currentWeekOffset+=dir;renderCalendar();}
+function goToday(){currentWeekOffset=0;renderCalendar();}
+function toggleNightEarly(){nightEarlyExpanded=!nightEarlyExpanded;renderCalendar();}
+function toggleNightLate() {nightLateExpanded =!nightLateExpanded; renderCalendar();}
+
+// ══════════════════════════════════════════
+// RENDER CALENDAR
+// ══════════════════════════════════════════
+function renderCalendar(){
+  const weekStart=getWeekStart(currentWeekOffset);
+  const days=Array.from({length:7},(_,i)=>{const d=new Date(weekStart);d.setDate(d.getDate()+i);return d;});
+  const ws=days[0],we=days[6];
+  document.getElementById('weekLabel').textContent=
+    `${MONTHS[ws.getMonth()]} ${ws.getDate()} – ${MONTHS[we.getMonth()]} ${we.getDate()}, ${we.getFullYear()}`;
+  document.getElementById('prevWeekBtn').disabled=currentWeekOffset<=-4;
+  document.getElementById('nextWeekBtn').disabled=currentWeekOffset>=5;
+
+  const today=new Date(); today.setHours(0,0,0,0);
+  const cal=document.getElementById('calendar');
+  let html='';
+
+  // Header
+  html+='<div class="cal-header"><div class="cal-header-cell"></div>';
+  for(const d of days){
+    const isTod=d.getTime()===today.getTime();
+    const isWknd=d.getDay()===0||d.getDay()===6;
+    html+=`<div class="cal-header-cell${isTod?' today':''}${isWknd?' weekend':''}">
+      ${DAYS[d.getDay()]}<span class="day-num">${d.getDate()}</span></div>`;
+  }
+  html+='</div>';
+
+  html+=`<div class="cal-rows-wrapper">`;
+
+  // Early off-hours toggle
+  html+=`<div class="offhours-toggle-row" onclick="toggleNightEarly()">
+    <div class="offhours-toggle-label${nightEarlyExpanded?' expanded':''}">
+      <span class="toggle-icon">▶</span>
+      <span>${nightEarlyExpanded?'Hide':'Show'} off-hours &nbsp;<strong>12:00 am – 6:00 am</strong></span>
+    </div></div>`;
+
+  for(let s=0;s<48;s++){
+    if(s===SLOT_NIGHT_LATE_START){
+      html+=`<div class="offhours-toggle-row" onclick="toggleNightLate()">
+        <div class="offhours-toggle-label${nightLateExpanded?' expanded':''}">
+          <span class="toggle-icon">▶</span>
+          <span>${nightLateExpanded?'Hide':'Show'} off-hours &nbsp;<strong>8:00 pm – 12:00 am</strong></span>
+        </div></div>`;
+    }
+    if(isNightEarly(s)&&!nightEarlyExpanded) continue;
+    if(isNightLate(s) &&!nightLateExpanded)  continue;
+
+    const wH=isWorkHour(s), nH=isNightEarly(s)||isNightLate(s);
+    html+=`<div class="cal-row">`;
+    html+=`<div class="time-label${wH?' work':nH?' off':''}">${slotToLabel(s)}</div>`;
+
+    for(const d of days){
+      const dKey=dateKey(d);
+      const bKey=bookingKey(dKey,s);
+      const booking=bookingsMap[bKey];
+      const past=isSlotPast(d,s);
+      const blocked=isSlotBlocked(dKey,s);
+      const inWin=isWithinBookingWindow(d);
+
+      const isWeekend=d.getDay()===0||d.getDay()===6;
+      const isTodayCol=d.getTime()===today.getTime();
+      let cls='time-slot';
+      if(isWeekend) cls+=' weekend';
+      else if(wH) cls+=' work-hours'; else if(nH) cls+=' off-hours'; else cls+=' normal';
+      if(isTodayCol) cls+=' today-col';
+
+      if(blocked){
+        const[sh,sm2]=blocked.start_time.split(':').map(Number);
+        const[eh,em] =blocked.end_time.split(':').map(Number);
+        const bSS=sh*2+(sm2>=30?1:0);
+        const bES=Math.max(0,(eh*2+(em>0?1:0))-1);
+        const isFirst=(s===bSS), isLast=(s===bES);
+        cls+=' blocked-cell'+(past?' past':'');
+        if(bSS===bES){ cls+=' cluster-single'; }
+        else if(isFirst) cls+=' cluster-top';
+        else if(isLast)  cls+=' cluster-bot';
+        else             cls+=' cluster-mid';
+        const inner=isFirst
+          ?`<span class="bk-name">${escHtml(blocked.reason||'Blocked')}</span>
+            <span class="bk-period">${blocked.start_time} – ${blocked.end_time}</span>`:'';
+        html+=`<div class="${cls}" onclick="showToast('Blocked: ${escHtml(blocked.reason||'Maintenance')}',true)">${inner}</div>`;
+
+      } else if(booking){
+        const isPastCell=past;
+        cls+=' booked-cell'+(isPastCell?' past':'');
+        const clStart=booking.cluster_start!==null&&booking.cluster_start!==undefined?booking.cluster_start:s;
+        const clEnd  =booking.cluster_end  !==null&&booking.cluster_end  !==undefined?booking.cluster_end  :s;
+        const isFirst=(s===clStart), isLast=(s===clEnd);
+        if(clStart===clEnd){ cls+=' cluster-single'; }
+        else if(isFirst) cls+=' cluster-top';
+        else if(isLast)  cls+=' cluster-bot';
+        else             cls+=' cluster-mid';
+        const timeStr=`${slotToLabel(clStart)} – ${slotToLabel(clEnd+1)}`;
+        const inner=isFirst
+          ?`<span class="bk-name">${escHtml(booking.name)}</span>
+            <span class="bk-pi">${escHtml(booking.pi)}</span>
+            <span class="bk-period">${timeStr}</span>`:'';
+        html+=`<div class="${cls}" onclick="openViewModal('${bKey}','${dKey}',${clStart})">${inner}</div>`;
+
+      } else if(past||!inWin){
+        cls+=' past';
+        html+=`<div class="${cls}"></div>`;
+      } else {
+        html+=`<div class="${cls}" onclick="openBookModal('${dKey}',${s})"></div>`;
+      }
+    }
+    html+='</div>';
+  }
+  html+='</div>';
+  cal.innerHTML=html;
+}
+
+// ══════════════════════════════════════════
+// BOOK MODAL
+// ══════════════════════════════════════════
+function openBookModal(dateStr,slot){
+  pendingSlot={dateStr,slot:parseInt(slot)};
+  const startSel = document.getElementById('bookStartTime');
+  startSel.value = slotToValue(parseInt(slot));
+  refreshBookEndTimes(dateStr, parseInt(slot), true);
+  populateDataLists();
+
+  // Pre-select last used name/PI if they exist in the list
+  const lastName=normName(localStorage.getItem('fc_name')||'');
+  const lastPI  =normName(localStorage.getItem('fc_pi')||'');
+  const nameSel =document.getElementById('bookNameSelect');
+  const piSel   =document.getElementById('bookPISelect');
+  const nameInp =document.getElementById('bookName');
+  const piInp   =document.getElementById('bookPI');
+
+  // Reset both to hidden text input
+  nameInp.style.display='none'; piInp.style.display='none';
+
+  if(lastName && [...nameSel.options].some(o=>o.value===lastName)){
+    nameSel.value=lastName; nameInp.value=lastName;
+    // Auto-fill PI from usersList
+    const user=usersList.find(u=>u.name===lastName);
+    if(user && [...piSel.options].some(o=>o.value===user.pi)){
+      piSel.value=user.pi; piInp.value=user.pi;
+    } else { piSel.value=''; piInp.value=''; }
+  } else { nameSel.value=''; nameInp.value=''; piSel.value=''; piInp.value=''; }
+
+  document.getElementById('bookNotes').value='';
+  updateBookSlotInfo();
+  openModal('bookModal');
+}
+
+function updateBookSlotInfo(){
+  if(!pendingSlot) return;
+  const{dateStr}=pendingSlot;
+  const startTime=document.getElementById('bookStartTime').value;
+  const endTime  =document.getElementById('bookEndTime').value;
+  const startSlot=timeStrToSlot(startTime);
+  const endSlot  =timeStrToSlot(endTime);
+  const count=endSlot-startSlot;
+  const[y,m,d]=dateStr.split('-');
+  const label=`${DAYS[new Date(dateStr+'T12:00:00').getDay()]}, ${m}/${d}/${y}`;
+  document.getElementById('bookSlotInfo').textContent=`${label}  ·  ${timeLabel(startTime)} – ${timeLabel(endTime)}`;
+  pendingSlot.slot=startSlot;
+  const msgEl=document.getElementById('bookConflictMsg');
+  const btn  =document.getElementById('confirmBookBtn');
+  if(count<=0){
+    msgEl.textContent='End time must be after start time.'; msgEl.style.display='block';
+    btn.disabled=true; btn.style.opacity='0.5'; return;
+  }
+
+  // End options are pre-filtered to exclude booked/blocked slots, so no conflict possible
+  msgEl.style.display='none';
+  btn.disabled=false; btn.style.opacity='1';
+}
+
+async function confirmBooking(){
+  const nameSel=document.getElementById('bookNameSelect');
+  const piSel  =document.getElementById('bookPISelect');
+  const nameRaw= (nameSel.value==='__new__'||nameSel.value==='')
+    ? document.getElementById('bookName').value
+    : nameSel.value;
+  const piRaw  = (piSel.value==='__new__'||piSel.value==='')
+    ? document.getElementById('bookPI').value
+    : piSel.value;
+  const name = normName(nameRaw);
+  const pi   = normName(piRaw);
+  const notes=document.getElementById('bookNotes').value.trim();
+  if(!name){document.getElementById('bookName').focus();return;}
+  if(!pi)  {document.getElementById('bookPI').focus();return;}
+  const startTime=document.getElementById('bookStartTime').value;
+  const endTime  =document.getElementById('bookEndTime').value;
+  const startSlot=timeStrToSlot(startTime);
+  const endSlot  =timeStrToSlot(endTime);
+  const count=endSlot-startSlot;
+  if(count<=0){showToast('Invalid time range.',true);return;}
+  const{dateStr}=pendingSlot;
+  const ck=count>1?makeClusterKey():null;
+
+  // Build rows for all slots in the booking
+  const rows=[];
+  for(let s=startSlot;s<startSlot+count;s++){
+    rows.push({
+      date_str:dateStr, slot:s,
+      cluster_key:ck, cluster_start:startSlot, cluster_end:startSlot+count-1,
+      name, pi, notes,
+      device_sig: deviceSig,
+      booked_at:new Date().toISOString()
+    });
+  }
+
+  const btn=document.getElementById('confirmBookBtn');
+  btn.disabled=true; btn.textContent='Saving…';
+  try {
+    const {error}=await db.from('bookings').insert(rows);
+    if(error) throw error;
+    // Upsert user into directory (normalize, dedup by name+pi)
+    await upsertUserDir(name, pi);
+    localStorage.setItem('fc_name',name); localStorage.setItem('fc_pi',pi);
+    closeModal('bookModal');
+    showToast('Booking confirmed!');
+    // Realtime will update the calendar automatically
+  } catch(e){
+    console.error('Booking error:',e);
+    showToast('Failed to save booking: ' + (e.message||e), true);
+  } finally {
+    btn.disabled=false; btn.textContent='Confirm Booking';
+  }
+}
+
+// ══════════════════════════════════════════
+// VIEW MODAL
+// ══════════════════════════════════════════
+function openViewModal(bKey,dateStr,slot){
+  const b=bookingsMap[bKey]; if(!b) return;
+  currentViewKey=bKey;
+  const past=isSlotPast(new Date(dateStr+'T12:00:00'),parseInt(slot));
+  const[y,m,d]=dateStr.split('-');
+  const label=`${DAYS[new Date(dateStr+'T12:00:00').getDay()]}, ${m}/${d}/${y}`;
+  const startSlot=b.cluster_start!==null&&b.cluster_start!==undefined?b.cluster_start:parseInt(slot);
+  const endSlot  =b.cluster_end  !==null&&b.cluster_end  !==undefined?b.cluster_end+1:parseInt(slot)+1;
+  document.getElementById('viewSlotInfo').textContent=`${label}  ·  ${slotToLabel(startSlot)} – ${slotToLabel(endSlot)}`;
+  document.getElementById('viewPastWarning').style.display=past?'block':'none';
+  document.getElementById('viewDetails').innerHTML=`
+    <p><span>Name</span><span>${escHtml(b.name)}</span></p>
+    <p><span>PI / Lab</span><span>${escHtml(b.pi)}</span></p>
+    <p><span>Booking</span><span>${slotToLabel(startSlot)} – ${slotToLabel(endSlot)}</span></p>
+    <p><span>Booked at</span><span>${new Date(b.booked_at).toLocaleString()}</span></p>
+  `;
+  document.getElementById('viewNotesInput').value=b.notes||'';
+  const canCancel = isAdminAuthed || (!past && (!b.device_sig || b.device_sig===deviceSig));
+  document.getElementById('cancelBookingBtn').style.display=canCancel?'inline-flex':'none';
+  openModal('viewModal');
+}
+
+async function saveNotes(){
+  if(!currentViewKey) return;
+  const b=bookingsMap[currentViewKey]; if(!b) return;
+  const note=document.getElementById('viewNotesInput').value.trim();
+  // Update only the slots for this date's period (cluster_key scoped to date_str)
+  const filter=b.cluster_key
+    ? db.from('bookings').update({notes:note}).eq('cluster_key',b.cluster_key).eq('date_str',b.date_str)
+    : db.from('bookings').update({notes:note}).eq('id',b.id);
+  const{error}=await filter;
+  if(error){showToast('Failed to save notes.',true);return;}
+  // Update local state immediately
+  Object.keys(bookingsMap).forEach(k=>{
+    const r=bookingsMap[k];
+    if(r.date_str===b.date_str&&(b.cluster_key?r.cluster_key===b.cluster_key:r.id===b.id)) r.notes=note;
+  });
+  showToast('Notes saved.');
+}
+
+async function cancelCurrentBooking(){
+  if(!currentViewKey) return;
+  const b=bookingsMap[currentViewKey]; if(!b) return;
+  const past=isSlotPast(new Date(b.date_str+'T12:00:00'),b.slot);
+  if(past&&!isAdminAuthed){showToast('Past bookings can only be cancelled by an admin.',true);return;}
+
+  // Device signature check — only same device or admin can cancel
+  if(!isAdminAuthed && b.device_sig && b.device_sig !== deviceSig){
+    showToast('You can only cancel bookings made from this device.',true);return;
+  }
+
+  if(!confirm(`Cancel this booking on ${b.date_str}?`)) return;
+
+  // Delete all slots with same cluster_key on the same date (one period, one day)
+  const ds=b.date_str; const ck=b.cluster_key;
+  const keysToDelete=Object.keys(bookingsMap).filter(k=>{
+    const r=bookingsMap[k];
+    if(r.date_str!==ds) return false;
+    return ck ? r.cluster_key===ck : r.id===b.id;
+  });
+  let failed=false;
+  for(const k of keysToDelete){
+    const r=bookingsMap[k];
+    const{error}=await db.from('bookings').delete().eq('id',r.id);
+    if(error){failed=true;console.error('Delete error',error);}
+    else delete bookingsMap[k];
+  }
+  if(failed){showToast('Some slots failed to remove.',true);return;}
+  closeModal('viewModal');
+  showToast('Booking removed.');
+  renderCalendar();
+  if(isAdminAuthed) renderAdminPanel();
+}
+
+// ══════════════════════════════════════════
+// ADMIN
+// ══════════════════════════════════════════
+function showAdmin(){
+  if(isAdminAuthed){renderAdminPanel();document.getElementById('bookingPage').classList.add('hidden');document.getElementById('adminPanel').classList.add('open');}
+  else{openModal('adminLoginModal');setTimeout(()=>document.getElementById('adminPassword').focus(),100);}
+}
+function hideAdmin(){document.getElementById('adminPanel').classList.remove('open');document.getElementById('bookingPage').classList.remove('hidden');}
+async function checkAdminPw(){
+  const pw = document.getElementById('adminPassword').value;
+  // Reset reveal state regardless of outcome
+  const pwBtn = document.querySelector('#adminLoginModal button[onclick*="adminPassword"]');
+  document.getElementById('adminPassword').type='password';
+  if(pwBtn) pwBtn.textContent='🙊';
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pw);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+  if(hashHex === ADMIN_PASSWORD_HASH){
+    isAdminAuthed=true;closeModal('adminLoginModal');document.getElementById('adminPassword').value='';
+    renderAdminPanel();document.getElementById('bookingPage').classList.add('hidden');document.getElementById('adminPanel').classList.add('open');
+  }else{showToast('Incorrect password.',true);document.getElementById('adminPassword').value='';document.getElementById('adminPassword').focus();}
+}
+
+function renderAdminPanel(){
+  // Bookings — date window: 3 months back to 1 month forward
+  const now = new Date(); now.setHours(0,0,0,0);
+  const rangeStart = new Date(now); rangeStart.setMonth(rangeStart.getMonth()-3);
+  const rangeEnd   = new Date(now); rangeEnd.setMonth(rangeEnd.getMonth()+1);
+  const todayStr   = dateKey(now);
+
+  const seen=new Set();
+  const entries=Object.entries(bookingsMap)
+    .sort((a,b)=>a[0].localeCompare(b[0]))
+    .filter(([k,b])=>{
+      const ds=k.split('_')[0];
+      // Deduplicate by cluster_key+date so multi-date bookings show one row per date
+      const id=(b.cluster_key||k)+'|'+ds;
+      if(seen.has(id))return false; seen.add(id); return true;
+    })
+    .filter(([key])=>{
+      const ds=key.split('_')[0];
+      return ds>=dateKey(rangeStart) && ds<=dateKey(rangeEnd);
+    });
+
+  const tbody=document.getElementById('adminTableBody');
+  tbody.innerHTML=entries.length?entries.map(([key,b])=>{
+    const ds=key.split('_')[0];
+    const[y,m,d]=ds.split('-'); const dl=`${m}/${d}/${y}`;
+    const st=b.cluster_start!==null&&b.cluster_start!==undefined?b.cluster_start:b.slot;
+    const en=b.cluster_end  !==null&&b.cluster_end  !==undefined?b.cluster_end+1:b.slot+1;
+    const isToday = ds===todayStr;
+    return `<tr data-date="${ds}" ${isToday?'class="today-row"':''}><td>${dl}</td><td>${slotToLabel(st)} – ${slotToLabel(en)}</td><td>${(en-st)*30}m</td>
+      <td style="color:var(--linen);font-weight:600">${escHtml(b.name)}</td>
+      <td>${escHtml(b.pi)}</td><td>${escHtml(b.notes||'—')}</td>
+      <td><button class="btn btn-danger" style="padding:5px 12px;font-size:.82rem;min-height:34px" onclick="adminCancel('${key}')">Remove</button></td></tr>`;
+  }).join(''):'<tr><td colspan="7" style="color:var(--text-dim);text-align:center;padding:20px">No bookings yet.</td></tr>';
+
+  // Scroll bookings table to today (or next upcoming)
+  requestAnimationFrame(()=>{
+    const wrapper=document.getElementById('adminTableWrapper');
+    if(!wrapper) return;
+    // Find the first row on or after today
+    const rows=wrapper.querySelectorAll('tr[data-date]');
+    let targetRow=null;
+    for(const row of rows){
+      if(row.dataset.date>=todayStr){targetRow=row;break;}
+    }
+    if(targetRow){
+      const wTop=wrapper.getBoundingClientRect().top;
+      const rTop=targetRow.getBoundingClientRect().top;
+      wrapper.scrollTop += (rTop-wTop) - 40; // 40px offset so header row is visible
+    }
+  });
+
+  renderBlocksTable();
+  renderDirTable();
+
+  // Export defaults
+  const wd=getWeekStart(0);
+  document.getElementById('exportFrom').value=dateKey(wd);
+  const we2=new Date(wd); we2.setDate(we2.getDate()+6);
+  document.getElementById('exportTo').value=dateKey(we2);
+}
+
+function renderBlocksTable(){
+  const now = new Date(); now.setHours(0,0,0,0);
+  const rangeStart = new Date(now); rangeStart.setMonth(rangeStart.getMonth()-3);
+  const rangeEnd   = new Date(now); rangeEnd.setMonth(rangeEnd.getMonth()+1);
+  const todayStr   = dateKey(now);
+
+  const sorted=[...blocksList]
+    .filter(bl=>bl.date_str>=dateKey(rangeStart) && bl.date_str<=dateKey(rangeEnd))
+    .sort((a,b)=>a.date_str.localeCompare(b.date_str)||a.start_time.localeCompare(b.start_time));
+  const tbody=document.getElementById('blocksTableBody');
+  tbody.innerHTML=sorted.length?sorted.map(bl=>{
+    const[y,m,d]=bl.date_str.split('-');
+    const isToday = bl.date_str===todayStr;
+    return `<tr data-date="${bl.date_str}" ${isToday?'class="today-row"':''}>
+      <td>${m}/${d}/${y}</td>
+      <td>${timeLabel(bl.start_time)} – ${bl.end_time==='24:00'?'12:00 am':timeLabel(bl.end_time)}</td>
+      <td>${escHtml(bl.reason||'Blocked')}</td>
+      <td><button class="btn btn-danger" style="padding:4px 10px;font-size:.78rem;min-height:30px" onclick="removeBlock('${bl.id}')">Remove</button></td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="4" style="color:var(--text-dim);text-align:center;padding:16px">No blocks set.</td></tr>';
+
+  // Scroll blocks table to today (or next upcoming)
+  requestAnimationFrame(()=>{
+    const wrapper=document.getElementById('blocksTableWrapper');
+    if(!wrapper) return;
+    const rows=wrapper.querySelectorAll('tr[data-date]');
+    let targetRow=null;
+    for(const row of rows){
+      if(row.dataset.date>=todayStr){targetRow=row;break;}
+    }
+    if(targetRow){
+      const wTop=wrapper.getBoundingClientRect().top;
+      const rTop=targetRow.getBoundingClientRect().top;
+      wrapper.scrollTop += (rTop-wTop) - 40;
+    }
+  });
+}
+
+async function removeBlock(id){
+  const bl=blocksList.find(b=>b.id===id); if(!bl) return;
+  if(!confirm(`Remove block: ${bl.date_str} ${bl.start_time}–${bl.end_time}?`)) return;
+  const{error}=await db.from('blocks').delete().eq('id',id);
+  if(error){showToast('Failed to remove block.',true);return;}
+  // Update local state immediately — don't rely on realtime
+  blocksList=blocksList.filter(b=>b.id!==id);
+  showToast('Block removed.');
+  renderCalendar();
+  renderAdminPanel();
+}
+
+// Multi-date block adding
+function addBlockDateInline(){
+  const inp=document.getElementById('blockDateInline');
+  const d=parseDateInput(inp.value);
+  if(!d){showToast('Enter a valid date (MM/DD/YYYY).',true);return;}
+  if(blockPendingDates.includes(d)){showToast('Date already added.',true);return;}
+  blockPendingDates.push(d);
+  renderBlockDatesDisplay();
+  inp.value='';
+}
+function removeBlockDate(d){blockPendingDates=blockPendingDates.filter(x=>x!==d);renderBlockDatesDisplay();}
+function renderBlockDatesDisplay(){
+  const el=document.getElementById('blockDatesDisplay');
+  if(!el) return;
+  el.innerHTML=blockPendingDates.map(d=>{
+    const[y,m,dd]=d.split('-');
+    return `<span class="date-chip red"><span>${m}/${Number(dd)}/${y}</span><button onclick="removeBlockDate('${d}')" title="Remove">×</button></span>`;
+  }).join('');
+}
+
+// ── Block conflict helpers ────────────────────────────────────────────────────
+function slotToTimeStr(slot){
+  // Convert slot number to HH:MM string (slot 48 = 24:00)
+  if(slot>=48) return '24:00';
+  return `${String(Math.floor(slot/2)).padStart(2,'0')}:${slot%2===0?'00':'30'}`;
+}
+
+async function resolveBlockConflictsForDate(dateStr, newStartSlot, newEndSlot, reason){
+  // newEndSlot is exclusive (e.g. 08:00-10:00 means slots 16..19, newEndSlot=20)
+  const existingBlocks = blocksList.filter(b=>b.date_str===dateStr);
+  const toDelete=[], toInsert=[];
+
+  for(const ex of existingBlocks){
+    const[esh,esm]=ex.start_time.split(':').map(Number);
+    const[eeh,eem]=ex.end_time  .split(':').map(Number);
+    const exStart = esh*2+(esm>=30?1:0);
+    const exEnd   = eeh===24?48:eeh*2+(eem>0?1:0);
+
+    // No overlap — leave unchanged
+    if(newEndSlot<=exStart || newStartSlot>=exEnd) continue;
+
+    // New block completely covers existing → remove existing
+    if(newStartSlot<=exStart && newEndSlot>=exEnd){
+      toDelete.push(ex.id);
+      continue;
+    }
+
+    // Partial overlap — trim/split existing block
+    toDelete.push(ex.id);
+
+    // New block overlaps start of existing → keep right remainder
+    if(newStartSlot<=exStart && newEndSlot<exEnd){
+      toInsert.push({date_str:dateStr, start_time:slotToTimeStr(newEndSlot), end_time:ex.end_time, reason:ex.reason||'Blocked'});
+    }
+    // New block overlaps end of existing → keep left remainder
+    else if(newStartSlot>exStart && newEndSlot>=exEnd){
+      toInsert.push({date_str:dateStr, start_time:ex.start_time, end_time:slotToTimeStr(newStartSlot), reason:ex.reason||'Blocked'});
+    }
+    // New block is inside existing → split into two
+    else if(newStartSlot>exStart && newEndSlot<exEnd){
+      toInsert.push({date_str:dateStr, start_time:ex.start_time,           end_time:slotToTimeStr(newStartSlot), reason:ex.reason||'Blocked'});
+      toInsert.push({date_str:dateStr, start_time:slotToTimeStr(newEndSlot), end_time:ex.end_time,               reason:ex.reason||'Blocked'});
+    }
+  }
+
+  // Apply deletions
+  for(const id of toDelete){
+    await db.from('blocks').delete().eq('id',id);
+    blocksList=blocksList.filter(b=>b.id!==id);
+  }
+  // Apply insertions (trimmed/split remnants)
+  if(toInsert.length){
+    await db.from('blocks').insert(toInsert);
+    // Don't push to blocksList here — addBlock will do a full fresh reload
+  }
+  return toDelete.length;
+}
+
+async function resolveBookingConflictsForBlock(dateStr, newStartSlot, newEndSlot){
+  const seenCk=new Set();
+  let trimCount=0, removeCount=0;
+
+  for(let s=newStartSlot; s<Math.min(newEndSlot,48); s++){
+    const b=bookingsMap[bookingKey(dateStr,s)];
+    if(!b) continue;
+    const ck=b.cluster_key;
+    const uid=ck||b.id;
+    if(seenCk.has(uid)) continue;
+    seenCk.add(uid);
+
+    const bStart=b.cluster_start!==null&&b.cluster_start!==undefined?b.cluster_start:b.slot;
+    const bEnd  =(b.cluster_end  !==null&&b.cluster_end  !==undefined?b.cluster_end  :b.slot)+1; // exclusive
+
+    // --- Step 1: Delete ALL original slots for this booking on this date ---
+    for(let ss=bStart;ss<bEnd;ss++){
+      const bk=bookingKey(dateStr,ss);
+      const br=bookingsMap[bk];
+      if(br){ await db.from('bookings').delete().eq('id',br.id); delete bookingsMap[bk]; }
+    }
+
+    // --- Step 2: Compute surviving segments (slots outside the block) ---
+    const survivingSlots=[];
+    for(let ss=bStart;ss<bEnd;ss++){
+      if(ss<newStartSlot||ss>=newEndSlot) survivingSlots.push(ss);
+    }
+
+    if(!survivingSlots.length){ removeCount++; continue; }
+
+    // --- Step 3: Group contiguous surviving slots into segments ---
+    const segments=[];
+    let segStart=survivingSlots[0], prev=survivingSlots[0];
+    for(let i=1;i<=survivingSlots.length;i++){
+      if(i===survivingSlots.length||survivingSlots[i]!==prev+1){
+        segments.push({start:segStart,end:prev});
+        if(i<survivingSlots.length) segStart=survivingSlots[i];
+      }
+      if(i<survivingSlots.length) prev=survivingSlots[i];
+    }
+
+    // --- Step 4: Insert each segment as a fully independent new booking ---
+    for(const seg of segments){
+      const newCk = (seg.end-seg.start)>0 ? makeClusterKey() : null;
+      const rows=[];
+      for(let ss=seg.start;ss<=seg.end;ss++){
+        rows.push({
+          date_str:dateStr, slot:ss,
+          cluster_key:newCk, cluster_start:seg.start, cluster_end:seg.end,
+          name:b.name, pi:b.pi, notes:b.notes||'', booked_at:b.booked_at||new Date().toISOString()
+        });
+      }
+      const{data,error}=await db.from('bookings').insert(rows).select();
+      if(!error&&data) for(const r of data) bookingsMap[bookingKey(r.date_str,r.slot)]=r;
+    }
+    trimCount++;
+  }
+  return {trimCount,removeCount};
+}
+
+async function addBlock(){
+  // Auto-add whatever is typed in the inline date input
+  const _bd=document.getElementById('blockDateInline');
+  const _bdp=parseDateInput(_bd?_bd.value:'');if(_bdp&&!blockPendingDates.includes(_bdp)){blockPendingDates.push(_bdp);if(_bd)_bd.value='';renderBlockDatesDisplay();}
+  const start =document.getElementById('blockStart').value;
+  const end   =document.getElementById('blockEnd').value;
+  const reason=document.getElementById('blockReason').value.trim()||'Blocked';
+  if(blockPendingDates.length===0){showToast('Add at least one date.',true);return;}
+  if(!start||!end){showToast('Set start and end times.',true);return;}
+  if(start>=end&&end!=='24:00'){showToast('End must be after start.',true);return;}
+
+  const[sh,sm]=start.split(':').map(Number);
+  const newStartSlot=sh*2+(sm>=30?1:0);
+  const newEndSlot  =end==='24:00'?48:timeStrToSlot(end);
+
+  let totalBookingChanges=0, totalBlockConflicts=0;
+
+  for(const dateStr of blockPendingDates){
+    // 1. Resolve conflicts with existing blocks (trim/split/remove them)
+    const bConf=await resolveBlockConflictsForDate(dateStr,newStartSlot,newEndSlot,reason);
+    totalBlockConflicts+=bConf;
+
+    // 2. Trim/remove normal bookings that overlap
+    const{trimCount,removeCount}=await resolveBookingConflictsForBlock(dateStr,newStartSlot,newEndSlot);
+    totalBookingChanges+=trimCount+removeCount;
+  }
+
+  // Insert the new block
+  const endStr=end==='24:00'?'24:00':end;
+  const rows=blockPendingDates.map(date=>({date_str:date,start_time:start,end_time:endStr,reason}));
+  const{error}=await db.from('blocks').insert(rows);
+  if(error){showToast('Failed to save blocks: '+error.message,true);return;}
+
+  blockPendingDates=[];
+  renderBlockDatesDisplay();
+  document.getElementById('blockReason').value='';
+
+  const notes=[];
+  if(totalBlockConflicts>0) notes.push(`${totalBlockConflicts} existing block${totalBlockConflicts>1?'s':''} adjusted`);
+  if(totalBookingChanges>0) notes.push(`${totalBookingChanges} booking${totalBookingChanges>1?'s':''} trimmed/removed`);
+
+  // Reload both blocks AND bookings fresh from DB for full consistency.
+  // Keep realtime suppressed until AFTER reload + render to prevent race-condition duplicates.
+  suppressBlockRealtime = true;
+  // Small delay lets in-flight realtime events fire and get swallowed by the suppress flag
+  await new Promise(r => setTimeout(r, 600));
+  const [{data: freshBlocks}, {data: freshBookings}] = await Promise.all([
+    db.from('blocks').select('*'),
+    db.from('bookings').select('*')
+  ]);
+  if(freshBlocks){
+    // Deduplicate by id just in case
+    const seen=new Set();
+    blocksList=freshBlocks.filter(b=>seen.has(b.id)?false:(seen.add(b.id),true));
+  }
+  if(freshBookings){ bookingsMap={}; for(const r of freshBookings) bookingsMap[bookingKey(r.date_str,r.slot)]=r; }
+
+  showToast(`Block saved.${notes.length?' ('+notes.join(', ')+')':''}`);
+  renderCalendar();
+  renderAdminPanel();
+  // Keep suppressed a little longer to absorb any late-arriving realtime events
+  await new Promise(r => setTimeout(r, 400));
+  suppressBlockRealtime = false;
+}
+
+async function adminCancel(key){
+  const b=bookingsMap[key]; if(!b) return;
+  if(!confirm('Remove this booking slot?')) return;
+
+  // Collect all map keys that belong to the same date + cluster (one day's block)
+  const ds = b.date_str;
+  const ck = b.cluster_key;
+  const keysToDelete = Object.keys(bookingsMap).filter(k=>{
+    const r=bookingsMap[k];
+    if(r.date_str!==ds) return false;
+    return ck ? r.cluster_key===ck : r.id===b.id;
+  });
+
+  // Delete each slot individually by id
+  let failed=false;
+  for(const k of keysToDelete){
+    const r=bookingsMap[k];
+    const {error}=await db.from('bookings').delete().eq('id',r.id);
+    if(error){ failed=true; console.error('Delete error',error); }
+    else delete bookingsMap[k];
+  }
+  if(failed){showToast('Some slots failed to remove.',true);return;}
+  showToast('Booking removed.');
+  renderCalendar();
+  renderAdminPanel();
+}
+
+async function clearAllBookings(){
+  if(!confirm('Delete ALL bookings? This cannot be undone.')) return;
+  const{error}=await db.from('bookings').delete().neq('id','00000000-0000-0000-0000-000000000000');
+  if(error){showToast('Failed to clear bookings.',true);return;}
+  bookingsMap={};
+  showToast('All bookings cleared.');
+  renderCalendar();
+  renderAdminPanel();
+}
+
+// ══════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════
+function openExportModal(){
+  const wd=getWeekStart(currentWeekOffset);
+  const we2=new Date(wd); we2.setDate(we2.getDate()+6);
+  document.getElementById('exportFromModal').value=dateKey(wd);
+  document.getElementById('exportToModal').value=dateKey(we2);
+  openModal('exportModal');
+}
+function exportFromModal(fmt){
+  const from=document.getElementById('exportFromModal').value;
+  const to  =document.getElementById('exportToModal').value;
+  if(!from||!to){showToast('Set both dates.',true);return;}
+  closeModal('exportModal');
+  if(fmt==='csv') exportReportCSV(from,to); else exportReportHTMLFn(from,to);
+}
+function exportReport(){
+  const from=document.getElementById('exportFrom').value;
+  const to  =document.getElementById('exportTo').value;
+  if(!from||!to){showToast('Set both dates.',true);return;}
+  exportReportCSV(from,to);
+}
+function exportReportHTML(){
+  const from=document.getElementById('exportFrom').value;
+  const to  =document.getElementById('exportTo').value;
+  if(!from||!to){showToast('Set both dates.',true);return;}
+  exportReportHTMLFn(from,to);
+}
+
+// normPI reuses normName — same hyphen-aware title-case logic
+function normPI(raw){ return normName(raw); }
+
+function buildReportData(from,to){
+  const fromD=new Date(from+'T00:00:00');
+  const toD  =new Date(to  +'T23:59:59');
+  const dates=[];
+  for(let d=new Date(fromD);d<=toD;d.setDate(d.getDate()+1)) dates.push(dateKey(new Date(d)));
+  const weeks={};
+  const getWeekKey=dateStr=>{const d=new Date(dateStr+'T12:00:00');const sun=new Date(d);sun.setDate(d.getDate()-d.getDay());return dateKey(sun);};
+  let totalBookingMin=0,totalBlockMin=0;
+  const bookingSummary=[],blockSummary=[];
+  const seenCk=new Set();
+  for(const dateStr of dates){
+    const wk=getWeekKey(dateStr);
+    if(!weeks[wk]) weeks[wk]={bookingMin:0,blockMin:0};
+    for(let s=0;s<48;s++){
+      const b=bookingsMap[bookingKey(dateStr,s)]; if(!b) continue;
+      const cid=b.cluster_key||bookingKey(dateStr,s);
+      if(seenCk.has(cid)) continue; seenCk.add(cid);
+      const st=b.cluster_start!==null&&b.cluster_start!==undefined?b.cluster_start:s;
+      const en=b.cluster_end  !==null&&b.cluster_end  !==undefined?b.cluster_end  :s;
+      const mins=(en-st+1)*30;
+      bookingSummary.push({date:dateStr,name:b.name,pi:normPI(b.pi),start:slotToLabel(st),end:slotToLabel(en+1),minutes:mins});
+      weeks[wk].bookingMin+=mins; totalBookingMin+=mins;
+    }
+    const dayBlocks=blocksList.filter(bl=>bl.date_str===dateStr);
+    for(const bl of dayBlocks){
+      const[sh,sm]=bl.start_time.split(':').map(Number);
+      const[eh,em]=bl.end_time.split(':').map(Number);
+      const mins=(eh*60+em)-(sh*60+sm);
+      blockSummary.push({date:dateStr,start:bl.start_time,end:bl.end_time,reason:bl.reason||'Blocked',minutes:mins});
+      weeks[wk].blockMin+=mins; totalBlockMin+=mins;
+    }
+  }
+  // Group bookings by normalized PI
+  const byPI={};
+  for(const b of bookingSummary){
+    if(!byPI[b.pi]) byPI[b.pi]={totalMin:0,bookings:[]};
+    byPI[b.pi].totalMin+=b.minutes;
+    byPI[b.pi].bookings.push(b);
+  }
+  return{weeks,bookingSummary,blockSummary,totalBookingMin,totalBlockMin,from,to,byPI};
+}
+
+function fmtMin(m){const h=Math.floor(m/60),mn=m%60;return h>0?(mn>0?`${h}h ${mn}m`:`${h}h`):`${mn}m`;}
+
+function exportReportCSV(from,to){
+  const{weeks,bookingSummary,blockSummary,totalBookingMin,totalBlockMin,byPI}=buildReportData(from,to);
+  let csv='FLOW CYTOMETER USAGE REPORT — HANS 301\n';
+  csv+=`Report period: ${fmtDate(from)} to ${fmtDate(to)}\n\n`;
+  csv+='=== USAGE BY PI / LAB ===\nPI / Lab,Total Time,Bookings\n';
+  Object.entries(byPI).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([pi,grp])=>{
+    csv+=`"${pi}",${fmtMin(grp.totalMin)},${grp.bookings.length}\n`;
+  });
+  csv+='\n=== BOOKINGS ===\nDate,Name,PI/Lab,Start,End,Duration (min)\n';
+  bookingSummary.forEach(b=>csv+=`${fmtDate(b.date)},"${b.name}","${b.pi}",${b.start},${b.end},${b.minutes}\n`);
+  csv+='\n=== MAINTENANCE BLOCKS ===\nDate,Start,End,Reason,Duration (min)\n';
+  blockSummary.forEach(b=>csv+=`${fmtDate(b.date)},${b.start},${b.end},"${b.reason}",${b.minutes}\n`);
+  csv+='\n=== WEEKLY SUMMARY ===\nWeek of,Booking Time,Block Time\n';
+  Object.entries(weeks).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([wk,w])=>{csv+=`${fmtDate(wk)},${fmtMin(w.bookingMin)},${fmtMin(w.blockMin)}\n`;});
+  csv+=`\n=== TOTALS ===\nTotal Booking Time,${fmtMin(totalBookingMin)}\nTotal Block Time,${fmtMin(totalBlockMin)}\n`;
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`flow-cytometer-report-${from}-${to}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  showToast('CSV exported.');
+}
+
+function exportReportHTMLFn(from,to){
+  const{weeks,bookingSummary,blockSummary,totalBookingMin,totalBlockMin,byPI}=buildReportData(from,to);
+  const wkRows=Object.entries(weeks).sort((a,b)=>a[0].localeCompare(b[0])).map(([wk,w])=>`<tr><td>Week of ${fmtDate(wk)}</td><td>${fmtMin(w.bookingMin)}</td><td>${fmtMin(w.blockMin)}</td></tr>`).join('');
+  const bkRows=bookingSummary.map(b=>`<tr><td>${fmtDate(b.date)}</td><td>${escHtml(b.name)}</td><td>${escHtml(b.pi)}</td><td>${b.start} – ${b.end}</td><td>${b.minutes} min</td></tr>`).join('');
+  const blRows=blockSummary.map(b=>`<tr><td>${fmtDate(b.date)}</td><td>${b.start} – ${b.end}</td><td>${escHtml(b.reason)}</td><td>${b.minutes} min</td></tr>`).join('');
+
+  // PI/Lab breakdown — sorted alphabetically by PI name
+  const piRows=Object.entries(byPI).sort((a,b)=>a[0].localeCompare(b[0])).map(([pi,grp])=>
+    `<tr><td>${escHtml(pi)}</td><td>${grp.bookings.length}</td><td>${fmtMin(grp.totalMin)}</td></tr>`
+  ).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Flow Cytometer Report ${from} – ${to}</title>
+  <link href='https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap' rel='stylesheet'>
+  <style>body{font-family:'Google Sans','Segoe UI',Arial,sans-serif;background:#f5f0eb;color:#2b2318;padding:40px;max-width:960px;margin:auto;}
+  h1{color:#3E4C54;font-size:1.8rem;margin-bottom:4px;}h2{color:#BC6C54;font-size:1.1rem;margin:28px 0 10px;}
+  .period{color:#6a7a84;font-size:.9rem;margin-bottom:24px;}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:.9rem;}
+  th{background:#3E4C54;color:#E9D9C8;padding:10px 14px;text-align:left;}
+  th.sortable{cursor:pointer;user-select:none;}
+  th.sortable:hover{background:#4a6070;}
+  th.sort-asc::after{content:' ▲';font-size:.7rem;opacity:.9;}
+  th.sort-desc::after{content:' ▼';font-size:.7rem;opacity:.9;}
+  td{padding:9px 14px;border-bottom:1px solid #d8cfc4;}
+  tr:hover td{background:#ede8e2;}
+  .totals{background:#3E4C54;color:#E9D9C8;padding:20px 24px;border-radius:10px;display:flex;gap:40px;flex-wrap:wrap;margin-bottom:8px;}
+  .total-item{text-align:center;}.total-item .val{font-size:1.8rem;font-weight:700;color:#E4A489;}.total-item .lbl{font-size:.8rem;opacity:.8;}
+  @media print{body{padding:20px;background:white;}}</style></head><body>
+  <h1>Flow Cytometer Usage Report</h1>
+  <div class="period">HANS 301 &nbsp;·&nbsp; ${fmtDate(from)} to ${fmtDate(to)} &nbsp;·&nbsp; Generated ${new Date().toLocaleString()}</div>
+  <div class="totals">
+    <div class="total-item"><div class="val">${fmtMin(totalBookingMin)}</div><div class="lbl">Total Booking Time</div></div>
+    <div class="total-item"><div class="val">${fmtMin(totalBlockMin)}</div><div class="lbl">Total Block/Maintenance Time</div></div>
+    <div class="total-item"><div class="val">${bookingSummary.length}</div><div class="lbl">Total Bookings</div></div>
+    <div class="total-item"><div class="val">${Object.keys(byPI).length}</div><div class="lbl">PI Labs</div></div>
+  </div>
+  <h2>Usage by PI / Lab</h2>
+  <table><thead><tr><th>PI / Lab</th><th>Bookings</th><th>Total Time</th></tr></thead><tbody>${piRows||'<tr><td colspan="3" style="color:#999">No bookings in this period.</td></tr>'}</tbody></table>
+  <h2>Weekly Summary</h2><table><thead><tr><th>Week</th><th>Booking Time</th><th>Block/Maintenance Time</th></tr></thead><tbody>${wkRows}</tbody></table>
+  <h2>All Bookings</h2>
+  <table id="bookingsTable"><thead><tr>
+    <th class="sortable" data-col="0" data-type="date">Date</th>
+    <th class="sortable" data-col="1" data-type="str">Name</th>
+    <th class="sortable" data-col="2" data-type="str">PI / Lab</th>
+    <th class="sortable" data-col="3" data-type="time">Time</th>
+    <th class="sortable" data-col="4" data-type="num">Duration</th>
+  </tr></thead><tbody>${bkRows||'<tr><td colspan="5" style="color:#999">No bookings in this period.</td></tr>'}</tbody></table>
+  <h2>Maintenance / Blocked Periods</h2><table><thead><tr><th>Date</th><th>Time</th><th>Reason</th><th>Duration</th></tr></thead><tbody>${blRows||'<tr><td colspan="4" style="color:#999">No blocks in this period.</td></tr>'}</tbody></table>
+  <script>
+  (function(){
+    const table=document.getElementById('bookingsTable');
+    if(!table) return;
+    let sortCol=-1, sortDir=1;
+    const ths=table.querySelectorAll('th.sortable');
+    ths.forEach(th=>th.addEventListener('click',()=>{
+      const col=+th.dataset.col, type=th.dataset.type;
+      if(sortCol===col) sortDir*=-1; else{sortCol=col;sortDir=1;}
+      ths.forEach(h=>{h.classList.remove('sort-asc','sort-desc');});
+      th.classList.add(sortDir===1?'sort-asc':'sort-desc');
+      const tbody=table.querySelector('tbody');
+      const rows=[...tbody.querySelectorAll('tr')].filter(r=>r.cells.length>1);
+      rows.sort((a,b)=>{
+        let av=a.cells[col]?.textContent.trim()||'';
+        let bv=b.cells[col]?.textContent.trim()||'';
+        if(type==='date'){av=av.split('/').reverse().join('');bv=bv.split('/').reverse().join('');}
+        else if(type==='num'){av=parseFloat(av)||0;bv=parseFloat(bv)||0;return(av-bv)*sortDir;}
+        else if(type==='time'){
+          const toMin=s=>{const m=s.match(/(\d+):(\d+)\s*(am|pm)/i);if(!m)return 0;let h=+m[1],mn=+m[2],p=m[3].toLowerCase();if(p==='pm'&&h!==12)h+=12;if(p==='am'&&h===12)h=0;return h*60+mn;};
+          av=toMin(av);bv=toMin(bv);return(av-bv)*sortDir;
+        }
+        return av.localeCompare(bv)*sortDir;
+      });
+      rows.forEach(r=>tbody.appendChild(r));
+    }));
+  })();
+  <\/script>
+  </body></html>`;
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`flow-cytometer-report-${from}-${to}.html`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  showToast('HTML report exported.');
+}
+
+// ══════════════════════════════════════════
+// USER DIRECTORY
+// ══════════════════════════════════════════
+function populateDataLists(){
+  // Collect unique normalized names and PIs from usersList + bookingsMap
+  const names=new Set(usersList.map(u=>u.name));
+  const pis  =new Set(usersList.map(u=>u.pi));
+  Object.values(bookingsMap).forEach(b=>{
+    if(b.name) names.add(normName(b.name));
+    if(b.pi)   pis.add(normName(b.pi));
+  });
+  const sortedNames=[...names].sort((a,b)=>a.localeCompare(b));
+  const sortedPIs  =[...pis  ].sort((a,b)=>a.localeCompare(b));
+  const nameOptHtml='<option value="">— Select name —</option><option value="__new__" style="color:#70d0d0;font-style:italic;">+ New user</option>'
+    +sortedNames.map(n=>`<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+  const piOptHtml='<option value="">— Select PI / lab —</option><option value="__new__" style="color:#70d0d0;font-style:italic;">+ New lab</option>'
+    +sortedPIs.map(p=>`<option value="${escHtml(p)}">${escHtml(p)}</option>`).join('');
+
+  // Booking modal selects
+  const nameSel=document.getElementById('bookNameSelect');
+  const piSel  =document.getElementById('bookPISelect');
+  if(nameSel){ const cur=nameSel.value; nameSel.innerHTML=nameOptHtml; if(cur) nameSel.value=cur; }
+  if(piSel)  { const cur=piSel.value;   piSel.innerHTML=piOptHtml;     if(cur) piSel.value=cur; }
+
+  // Admin booking selects
+  const aNameSel=document.getElementById('adminBookNameSelect');
+  const aPISel  =document.getElementById('adminBookPISelect');
+  if(aNameSel){ const cur=aNameSel.value; aNameSel.innerHTML=nameOptHtml; if(cur) aNameSel.value=cur; }
+  if(aPISel)  { const cur=aPISel.value;   aPISel.innerHTML=piOptHtml;     if(cur) aPISel.value=cur; }
+
+  // Keep datalists in sync for any remaining text inputs
+  ['nameDatalist'].forEach(id=>{
+    const dl=document.getElementById(id); if(!dl) return;
+    dl.innerHTML=sortedNames.map(n=>`<option value="${escHtml(n)}">`).join('');
+  });
+  ['piDatalist'].forEach(id=>{
+    const dl=document.getElementById(id); if(!dl) return;
+    dl.innerHTML=sortedPIs.map(p=>`<option value="${escHtml(p)}">`).join('');
+  });
+}
+
+function handleAdminNameSelect(){
+  const sel=document.getElementById('adminBookNameSelect');
+  const inp=document.getElementById('adminBookName');
+  const piSel=document.getElementById('adminBookPISelect');
+  const piInp=document.getElementById('adminBookPI');
+  if(sel.value==='__new__'){
+    inp.style.display='block'; inp.value=''; inp.focus();
+    piSel.value=''; piInp.style.display='none'; piInp.value='';
+  } else if(sel.value===''){
+    inp.style.display='none'; inp.value='';
+    piSel.value=''; piInp.style.display='none'; piInp.value='';
+  } else {
+    inp.style.display='none'; inp.value=sel.value;
+    const user=usersList.find(u=>u.name===sel.value);
+    if(user){ piSel.value=user.pi; piInp.style.display='none'; piInp.value=user.pi; }
+    else { piSel.value=''; piInp.style.display='none'; piInp.value=''; }
+  }
+}
+function handleAdminPISelect(){
+  const sel=document.getElementById('adminBookPISelect');
+  const inp=document.getElementById('adminBookPI');
+  if(sel.value==='__new__'){
+    inp.style.display='block'; inp.value=''; inp.focus();
+  } else {
+    inp.style.display='none'; inp.value=sel.value;
+  }
+}
+function handleNameSelect(){
+  const sel=document.getElementById('bookNameSelect');
+  const inp=document.getElementById('bookName');
+  const piSel=document.getElementById('bookPISelect');
+  const piInp=document.getElementById('bookPI');
+
+  if(sel.value==='__new__'){
+    // New user — show name text input, reset PI to blank so they choose
+    inp.style.display='block'; inp.value=''; inp.focus();
+    piSel.value=''; piInp.style.display='none'; piInp.value='';
+  } else if(sel.value===''){
+    inp.style.display='none'; inp.value='';
+    piSel.value=''; piInp.style.display='none'; piInp.value='';
+  } else {
+    // Known user — hide text input, auto-fill their PI
+    inp.style.display='none'; inp.value=sel.value;
+    const user=usersList.find(u=>u.name===sel.value);
+    if(user){
+      piSel.value=user.pi; piInp.style.display='none'; piInp.value=user.pi;
+    } else {
+      piSel.value=''; piInp.style.display='none'; piInp.value='';
+    }
+  }
+}
+
+function handlePISelect(){
+  const sel=document.getElementById('bookPISelect');
+  const inp=document.getElementById('bookPI');
+  if(sel.value==='__new__'){
+    inp.style.display='block'; inp.value=''; inp.focus();
+  } else {
+    inp.style.display='none'; inp.value=sel.value;
+  }
+}
+
+async function upsertUserDir(name, pi){
+  const n=normName(name), p=normName(pi);
+  if(!n||!p) return;
+
+  const existing=usersList.find(u=>u.name===n);
+
+  if(existing){
+    if(existing.pi===p) return; // no change
+    // Same name, different PI — delete old, insert new
+    await db.from('users').delete().eq('id',existing.id);
+    usersList=usersList.filter(u=>u.id!==existing.id);
+  }
+
+  const{data,error}=await db.from('users').insert({name:n,pi:p}).select().single();
+  if(!error&&data){
+    usersList.push(data);
+    usersList.sort((a,b)=>a.name.localeCompare(b.name));
+    populateDataLists();
+    if(document.getElementById('dirTableBody')) renderDirTable();
+  }
+}
+
+function renderDirTable(){
+  const tbody=document.getElementById('dirTableBody'); if(!tbody) return;
+  const sorted=[...usersList].sort((a,b)=>a.name.localeCompare(b.name));
+  tbody.innerHTML=sorted.length?sorted.map(u=>`
+    <tr id="dirrow-${u.id}">
+      <td><input type="text" data-id="${u.id}" data-field="name" value="${escHtml(u.name)}"
+        onblur="this.value=normName(this.value)"
+        oninput="dirMarkDirty('${u.id}')"
+        style="background:transparent;border:none;border-bottom:1px solid rgba(60,140,140,.3);color:var(--text);font-family:'Google Sans',sans-serif;font-size:.88rem;width:100%;padding:2px 4px;outline:none;"
+        onfocus="this.style.borderBottomColor='#70d0d0'"></td>
+      <td><input type="text" data-id="${u.id}" data-field="pi" value="${escHtml(u.pi)}"
+        onblur="this.value=normName(this.value)"
+        oninput="dirMarkDirty('${u.id}')"
+        style="background:transparent;border:none;border-bottom:1px solid rgba(60,140,140,.3);color:var(--text);font-family:'Google Sans',sans-serif;font-size:.88rem;width:100%;padding:2px 4px;outline:none;"
+        onfocus="this.style.borderBottomColor='#70d0d0'"></td>
+      <td><button class="btn btn-danger" style="padding:4px 10px;font-size:.78rem;min-height:28px;" onclick="dirDeleteUser('${u.id}')">Remove</button></td>
+    </tr>`).join('')
+    :'<tr><td colspan="3" style="color:var(--text-dim);text-align:center;padding:16px">No users yet.</td></tr>';
+  const btn=document.getElementById('dirSaveBtn');
+  if(btn) btn.style.display='none'; // hide until a change is made
+}
+
+function dirMarkDirty(id){
+  const btn=document.getElementById('dirSaveBtn');
+  if(btn) btn.style.display='inline-flex';
+}
+
+async function dirSaveAllChanges(){
+  const inputs=document.querySelectorAll('#dirTableBody input[data-id]');
+  const pending={};
+  inputs.forEach(inp=>{
+    const id=inp.dataset.id, field=inp.dataset.field;
+    if(!pending[id]) pending[id]={};
+    pending[id][field]=normName(inp.value);
+  });
+  let anyFail=false;
+  for(const [id, fields] of Object.entries(pending)){
+    const u=usersList.find(x=>x.id===id); if(!u) continue;
+    const n=fields.name||u.name, p=fields.pi||u.pi;
+    if(n===u.name&&p===u.pi) continue; // no change
+    const{error}=await db.from('users').update({name:n,pi:p}).eq('id',id);
+    if(error){ anyFail=true; console.error('Save error',error); continue; }
+    u.name=n; u.pi=p;
+  }
+  usersList.sort((a,b)=>a.name.localeCompare(b.name));
+  populateDataLists();
+  renderDirTable();
+  showToast(anyFail?'Some changes failed to save.':'Changes saved.');
+}
+
+async function dirAddUser(){
+  const nameEl=document.getElementById('dirAddName');
+  const piEl  =document.getElementById('dirAddPI');
+  const n=normName(nameEl.value), p=normName(piEl.value);
+  if(!n){showToast('Name is required.',true);nameEl.focus();return;}
+  if(!p){showToast('PI / Lab is required.',true);piEl.focus();return;}
+  const exists=usersList.some(u=>u.name===n&&u.pi===p);
+  if(exists){showToast('This name + PI combo already exists.',true);return;}
+  const{data,error}=await db.from('users').insert({name:n,pi:p}).select().single();
+  if(error){showToast('Failed to add user.',true);return;}
+  usersList.push(data);
+  usersList.sort((a,b)=>a.name.localeCompare(b.name));
+  nameEl.value=''; piEl.value='';
+  populateDataLists();
+  renderDirTable();
+  showToast('User added.');
+}
+
+async function dirSaveUser(id, newName, newPI){
+  const u=usersList.find(x=>x.id===id); if(!u) return;
+  const n=newName!==null?normName(newName):u.name;
+  const p=newPI  !==null?normName(newPI)  :u.pi;
+  if(!n||!p) return;
+  if(n===u.name&&p===u.pi) return; // no change
+  const{error}=await db.from('users').update({name:n,pi:p}).eq('id',id);
+  if(error){showToast('Failed to save.',true);return;}
+  u.name=n; u.pi=p;
+  usersList.sort((a,b)=>a.name.localeCompare(b.name));
+  populateDataLists();
+  renderDirTable();
+  showToast('Saved.');
+}
+
+async function dirDeleteUser(id){
+  if(!confirm('Remove this user from the directory?')) return;
+  const{error}=await db.from('users').delete().eq('id',id);
+  if(error){showToast('Failed to remove.',true);return;}
+  usersList=usersList.filter(u=>u.id!==id);
+  populateDataLists();
+  renderDirTable();
+  showToast('User removed.');
+}
+function syncDatePicker(pickerId, textId){
+  // Convert YYYY-MM-DD from native picker → MM/DD/YYYY in text input
+  const picker=document.getElementById(pickerId);
+  const txt=document.getElementById(textId);
+  if(!picker||!txt||!picker.value) return;
+  const[y,m,d]=picker.value.split('-');
+  txt.value=`${m}/${d}/${y}`;
+}
+function dateMask(inp){
+  // Auto-insert slashes: MM/DD/YYYY
+  let v=inp.value.replace(/[^\d]/g,'');
+  if(v.length>2) v=v.slice(0,2)+'/'+v.slice(2);
+  if(v.length>5) v=v.slice(0,5)+'/'+v.slice(5);
+  inp.value=v.slice(0,10);
+}
+function parseDateInput(val){
+  // Convert MM/DD/YYYY → YYYY-MM-DD for Supabase, or return null if invalid
+  const parts=val.trim().split('/');
+  if(parts.length!==3) return null;
+  const[m,d,y]=parts;
+  if(m.length!==2||d.length!==2||y.length!==4) return null;
+  const date=new Date(`${y}-${m}-${d}T12:00:00`);
+  if(isNaN(date)) return null;
+  return `${y}-${m}-${d}`;
+}
+
+// ══════════════════════════════════════════
+// ADMIN MANUAL BOOKING
+// ══════════════════════════════════════════
+function addAdminBookDateInline(){
+  const inp=document.getElementById('adminBookDateInline');
+  const d=parseDateInput(inp.value);
+  if(!d){showToast('Enter a valid date (MM/DD/YYYY).',true);return;}
+  if(adminBookPendingDates.includes(d)){showToast('Date already added.',true);return;}
+  adminBookPendingDates.push(d);
+  renderAdminBookDatesDisplay();
+  inp.value='';
+}
+function removeAdminBookDate(d){
+  adminBookPendingDates=adminBookPendingDates.filter(x=>x!==d);
+  renderAdminBookDatesDisplay();
+}
+function renderAdminBookDatesDisplay(){
+  const el=document.getElementById('adminBookDatesDisplay');
+  if(!el) return;
+  el.innerHTML=adminBookPendingDates.map(d=>{
+    const[y,m,dd]=d.split('-');
+    return `<span class="date-chip"><span>${m}/${Number(dd)}/${y}</span><button onclick="removeAdminBookDate('${d}')" title="Remove">×</button></span>`;
+  }).join('');
+}
+
+async function adminAddBooking(){
+  // Auto-add whatever is typed in the inline date input
+  const _ad=document.getElementById('adminBookDateInline');
+  const _adp=parseDateInput(_ad?_ad.value:'');if(_adp&&!adminBookPendingDates.includes(_adp)){adminBookPendingDates.push(_adp);if(_ad)_ad.value='';renderAdminBookDatesDisplay();}
+  const start = document.getElementById('adminBookStart').value;
+  const end   = document.getElementById('adminBookEnd').value;
+  const aNameSel=document.getElementById('adminBookNameSelect');
+  const aPISel  =document.getElementById('adminBookPISelect');
+  const nameRaw=(aNameSel.value==='__new__'||aNameSel.value==='')
+    ? document.getElementById('adminBookName').value
+    : aNameSel.value;
+  const piRaw  =(aPISel.value==='__new__'||aPISel.value==='')
+    ? document.getElementById('adminBookPI').value
+    : aPISel.value;
+  const name  = normName(nameRaw);
+  const pi    = normName(piRaw);
+  const notes = document.getElementById('adminBookNotes').value.trim();
+  if(adminBookPendingDates.length===0){showToast('Add at least one date.',true);return;}
+  if(!name){showToast('Name is required.',true);document.getElementById('adminBookName').focus();return;}
+  if(!pi)  {showToast('PI / Lab is required.',true);document.getElementById('adminBookPI').focus();return;}
+  if(!start||!end){showToast('Set start and end times.',true);return;}
+  const startSlot = timeStrToSlot(start);
+  const endSlot   = timeStrToSlot(end);
+  const count     = endSlot - startSlot;
+  if(count<=0){showToast('End time must be after start time.',true);return;}
+
+  // Each date gets its own cluster_key so cancelling one date doesn't affect others
+  let saved=0, skipped=0;
+  for(const dateStr of adminBookPendingDates){
+    // Check for conflicts on this date
+    let conflict=false;
+    for(let s=startSlot;s<endSlot;s++){
+      if(bookingsMap[bookingKey(dateStr,s)]||isSlotBlocked(dateStr,s)){conflict=true;break;}
+    }
+    if(conflict){skipped++;continue;}
+    const ck = count>1 ? makeClusterKey() : null;
+    const rows=[];
+    for(let s=startSlot;s<endSlot;s++){
+      rows.push({date_str:dateStr,slot:s,cluster_key:ck,cluster_start:startSlot,cluster_end:endSlot-1,name,pi,notes,booked_at:new Date().toISOString()});
+    }
+    const{error}=await db.from('bookings').insert(rows);
+    if(error){showToast('Error saving booking for '+dateStr+': '+error.message,true);continue;}
+    saved++;
+  }
+  adminBookPendingDates=[];
+  renderAdminBookDatesDisplay();
+  document.getElementById('adminBookName').value='';
+  document.getElementById('adminBookPI').value='';
+  document.getElementById('adminBookNotes').value='';
+  let msg=`Booking saved on ${saved} date${saved===1?'':'s'}.`;
+  if(skipped>0) msg+=` (${skipped} skipped due to conflicts)`;
+  showToast(msg, skipped>0&&saved===0);
+}
+
+// ══════════════════════════════════════════
+// MODAL HELPERS
+// ══════════════════════════════════════════
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+// Only close modal on click if BOTH mousedown AND mouseup landed on the overlay itself
+// (prevents closing when user click-drags text from inside the modal out to the overlay)
+document.querySelectorAll('.modal-overlay').forEach(el=>{
+  let downOnOverlay=false;
+  el.addEventListener('mousedown',e=>{downOnOverlay=(e.target===el);});
+  el.addEventListener('mouseup',e=>{
+    if(downOnOverlay && e.target===el) el.classList.remove('open');
+    downOnOverlay=false;
+  });
+});
+
+// ══════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════
+let toastTimer;
+function showToast(msg,isError=false){
+  const t=document.getElementById('toast'); t.textContent=msg;
+  t.className='toast show'+(isError?' error':'');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),3400);
+}
+
+// ══════════════════════════════════════════
+// TIME SELECT POPULATION
+// ══════════════════════════════════════════
+function allTimeOptions(includeMidnight=false){
+  // Returns 24hr value strings (used as <option value>)
+  const times=[];
+  for(let s=0;s<48;s++) times.push(slotToValue(s));
+  if(includeMidnight) times.push('24:00');
+  return times;
+}
+
+// Populate a start select with all times; populate its paired end select
+// showing only times strictly after the current start value.
+function populatePairedSelects(startId, endId, keepEndIfValid=false, maxSlots=47){
+  const startSel = document.getElementById(startId);
+  const endSel   = document.getElementById(endId);
+  if(!startSel || !endSel) return;
+
+  const times = allTimeOptions();
+  startSel.innerHTML = times.map(t=>`<option value="${t}">${timeLabel(t)}</option>`).join('');
+
+  function refreshEnd(isInit){
+    const startSlot   = timeStrToSlot(startSel.value);
+    const prevEnd     = endSel.value;
+    const prevEndSlot = prevEnd === '24:00' ? 48 : timeStrToSlot(prevEnd);
+    const maxEnd      = Math.min(startSlot + maxSlots + 1, 48); // +1 so 24:00 always reachable when maxSlots=47
+    const withMid     = allTimeOptions(true); // include 24:00 sentinel
+    endSel.innerHTML  = withMid
+      .filter((_,i) => i > startSlot && i <= maxEnd)
+      .map(t=>`<option value="${t}">${t==='24:00'?'12:00 am':timeLabel(t)}</option>`).join('');
+    if(!isInit && keepEndIfValid && prevEnd && prevEndSlot > startSlot && prevEndSlot <= maxEnd){
+      endSel.value = prevEnd;
+    } else {
+      endSel.value = startSlot + 1 <= 47 ? slotToValue(startSlot + 1) : '24:00';
+    }
+  }
+
+  refreshEnd(true);
+  startSel.addEventListener('change', ()=>refreshEnd(false));
+}
+
+function populateTimeSelects(){
+  // bookStartTime end-options are rebuilt per-open via refreshBookEndTimes (date-aware)
+  // We still need to fill bookStartTime with all 48 options once
+  const bookStart = document.getElementById('bookStartTime');
+  if(bookStart){
+    bookStart.innerHTML = allTimeOptions().map(t=>`<option value="${t}">${timeLabel(t)}</option>`).join('');
+    bookStart.addEventListener('change', ()=>{
+      if(pendingSlot){
+        refreshBookEndTimes(pendingSlot.dateStr, timeStrToSlot(bookStart.value), false);
+        updateBookSlotInfo();
+      }
+    });
+  }
+  populatePairedSelects('blockStart',     'blockEnd',     true); // no max, keep end if valid
+  populatePairedSelects('adminBookStart', 'adminBookEnd', true); // admin manual booking
+
+  // Default start = 6:00 am (06:00), end = 6:30 am (06:30)
+  [['blockStart','blockEnd'],['adminBookStart','adminBookEnd']].forEach(([sId,eId])=>{
+    const sSel=document.getElementById(sId);
+    const eSel=document.getElementById(eId);
+    if(!sSel||!eSel) return;
+    sSel.value='06:00';
+    // Rebuild end options from slot 0 (12:00 am) with 24:00 as last option
+    const allT=allTimeOptions(true); // includes 24:00
+    eSel.innerHTML=allT
+      .filter((_,i)=>i>0) // after 00:00 (slot 0)
+      .map(t=>`<option value="${t}">${t==='24:00'?'12:00 am':timeLabel(t)}</option>`).join('');
+    eSel.value='06:30'; // default end = 6:30 am
+  });
+}
+
+// Build end-time options for the booking modal, stopping before the next booking/block on that date.
+// isInit=true always resets to start+1; isInit=false keeps current end if still valid.
+function refreshBookEndTimes(dateStr, startSlot, isInit){
+  const endSel   = document.getElementById('bookEndTime');
+  const msgEl    = document.getElementById('bookConflictMsg');
+  const btn      = document.getElementById('confirmBookBtn');
+  if(!endSel) return;
+
+  // If the start slot itself is already booked or blocked, disable everything
+  const startOccupied = bookingsMap[bookingKey(dateStr, startSlot)] || isSlotBlocked(dateStr, startSlot);
+  if(startOccupied){
+    endSel.innerHTML = '<option value="">—</option>';
+    endSel.disabled  = true;
+    const reason = isSlotBlocked(dateStr, startSlot)
+      ? 'blocked (' + (isSlotBlocked(dateStr, startSlot).reason || 'maintenance') + ')'
+      : 'already booked';
+    msgEl.textContent = slotToLabel(startSlot) + ' is ' + reason + '.';
+    msgEl.style.display = 'block';
+    btn.disabled = true; btn.style.opacity = '0.5';
+    return;
+  }
+
+  // Start slot is free — re-enable end select and button
+  endSel.disabled = false;
+  msgEl.style.display = 'none';
+  btn.disabled = false; btn.style.opacity = '1';
+
+  const prevEnd     = endSel.value;
+  const prevEndSlot = prevEnd === '24:00' ? 48 : timeStrToSlot(prevEnd);
+  const maxEnd      = Math.min(startSlot + 16, 48); // 8-hr ceiling; 48 = 24:00 midnight
+
+  // Find the first occupied slot after startSlot
+  let firstOccupied = maxEnd + 1;
+  for(let s = startSlot + 1; s <= Math.min(maxEnd, 47); s++){
+    if(bookingsMap[bookingKey(dateStr, s)] || isSlotBlocked(dateStr, s)){
+      firstOccupied = s;
+      break;
+    }
+  }
+  const cap   = Math.min(firstOccupied, maxEnd);
+  const times = allTimeOptions(true);
+  endSel.innerHTML = times
+    .filter((_,i) => i > startSlot && i <= cap)
+    .map(t=>`<option value="${t}">${timeLabel(t)}</option>`).join('');
+
+  if(!isInit && prevEnd && prevEndSlot > startSlot && prevEndSlot <= cap){
+    endSel.value = prevEnd;
+  } else {
+    endSel.value = startSlot + 1 <= 47 ? slotToValue(startSlot + 1) : '24:00';
+  }
+}
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+populateTimeSelects();
+loadAllData().then(()=>subscribeRealtime());
+</script>
+</body>
+</html>
