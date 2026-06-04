@@ -1,9 +1,9 @@
 // generate_report.js
-// Queries Supabase and generates the same HTML report as the browser export.
-// Run by GitHub Actions — requires SUPABASE_URL and SUPABASE_ANON_KEY env vars.
+// Queries Supabase REST API directly (no WebSocket needed) and generates
+// the weekly usage report HTML. Run by GitHub Actions.
 
-const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
+const https = require('https');
 
 const SUPABASE_URL      = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -13,7 +13,30 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   process.exit(1);
 }
 
-const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ── Simple REST fetch helper ───────────────────────────────────────────────
+function supabaseFetch(table, params) {
+  return new Promise((resolve, reject) => {
+    const query = params ? '?' + params : '';
+    const url = new URL(`/rest/v1/${table}${query}`, SUPABASE_URL);
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Accept': 'application/json'
+      }
+    };
+    https.get(options, res => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); }
+        catch (e) { reject(new Error('JSON parse error: ' + body)); }
+      });
+    }).on('error', reject);
+  });
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function dateKey(d) {
@@ -50,7 +73,7 @@ function escHtml(s) {
 // ── Build report data ──────────────────────────────────────────────────────
 function buildReportData(bookingsMap, blocksList, from, to) {
   const fromD = new Date(from+'T00:00:00');
-  const toD   = new Date(to  +'T23:59:59');
+  const toD   = new Date(to+'T23:59:59');
   const dates = [];
   for (let d = new Date(fromD); d <= toD; d.setDate(d.getDate()+1))
     dates.push(dateKey(new Date(d)));
@@ -71,15 +94,20 @@ function buildReportData(bookingsMap, blocksList, from, to) {
     if (!weeks[wk]) weeks[wk] = {bookingMin:0, blockMin:0};
 
     for (let s=0; s<48; s++) {
-      const b = bookingsMap[bookingKey(dateStr,s)]; if (!b) continue;
+      const b = bookingsMap[bookingKey(dateStr,s)];
+      if (!b) continue;
       const cid = b.cluster_key || bookingKey(dateStr,s);
-      if (seenCk.has(cid)) continue; seenCk.add(cid);
+      if (seenCk.has(cid)) continue;
+      seenCk.add(cid);
       const st = b.cluster_start != null ? b.cluster_start : s;
       const en = b.cluster_end   != null ? b.cluster_end   : s;
       const mins = (en-st+1)*30;
-      bookingSummary.push({date:dateStr, name:b.name, pi:normName(b.pi),
-        start:slotToLabel(st), end:slotToLabel(en+1), minutes:mins});
-      weeks[wk].bookingMin += mins; totalBookingMin += mins;
+      bookingSummary.push({
+        date:dateStr, name:b.name, pi:normName(b.pi),
+        start:slotToLabel(st), end:slotToLabel(en+1), minutes:mins
+      });
+      weeks[wk].bookingMin += mins;
+      totalBookingMin += mins;
     }
 
     const dayBlocks = blocksList.filter(bl => bl.date_str === dateStr);
@@ -87,9 +115,12 @@ function buildReportData(bookingsMap, blocksList, from, to) {
       const [sh,sm] = bl.start_time.split(':').map(Number);
       const [eh,em] = bl.end_time.split(':').map(Number);
       const mins = (eh*60+em)-(sh*60+sm);
-      blockSummary.push({date:dateStr, start:bl.start_time, end:bl.end_time,
-        reason:bl.reason||'Blocked', minutes:mins});
-      weeks[wk].blockMin += mins; totalBlockMin += mins;
+      blockSummary.push({
+        date:dateStr, start:bl.start_time,
+        end:bl.end_time, reason:bl.reason||'Blocked', minutes:mins
+      });
+      weeks[wk].blockMin += mins;
+      totalBlockMin += mins;
     }
   }
 
@@ -111,10 +142,12 @@ function generateHTML(data) {
     .map(([wk,w])=>`<tr><td>Week of ${fmtDate(wk)}</td><td>${fmtMin(w.bookingMin)}</td><td>${fmtMin(w.blockMin)}</td></tr>`).join('');
 
   const bkRows = bookingSummary.map(b=>
-    `<tr><td>${fmtDate(b.date)}</td><td>${escHtml(b.name)}</td><td>${escHtml(b.pi)}</td><td>${b.start} – ${b.end}</td><td>${b.minutes} min</td></tr>`).join('');
+    `<tr><td>${fmtDate(b.date)}</td><td>${escHtml(b.name)}</td><td>${escHtml(b.pi)}</td><td>${b.start} – ${b.end}</td><td>${b.minutes} min</td></tr>`
+  ).join('');
 
   const blRows = blockSummary.map(b=>
-    `<tr><td>${fmtDate(b.date)}</td><td>${b.start} – ${b.end}</td><td>${escHtml(b.reason)}</td><td>${b.minutes} min</td></tr>`).join('');
+    `<tr><td>${fmtDate(b.date)}</td><td>${b.start} – ${b.end}</td><td>${escHtml(b.reason)}</td><td>${b.minutes} min</td></tr>`
+  ).join('');
 
   const piRows = Object.entries(byPI).sort((a,b)=>a[0].localeCompare(b[0]))
     .map(([pi,grp])=>`<tr><td>${escHtml(pi)}</td><td>${grp.bookings.length}</td><td>${fmtMin(grp.totalMin)}</td></tr>`).join('');
@@ -154,7 +187,7 @@ tr:hover td{background:#ede8e2;}
 <tbody>${piRows||'<tr><td colspan="3" style="color:#999">No bookings in this period.</td></tr>'}</tbody></table>
 <h2>Weekly Summary</h2>
 <table><thead><tr><th>Week</th><th>Booking Time</th><th>Block/Maintenance Time</th></tr></thead>
-<tbody>${wkRows}</tbody></table>
+<tbody>${wkRows||'<tr><td colspan="3" style="color:#999">No data.</td></tr>'}</tbody></table>
 <h2>All Bookings</h2>
 <table id="bookingsTable"><thead><tr>
   <th class="sortable" data-col="0" data-type="date">Date</th>
@@ -170,28 +203,21 @@ tr:hover td{background:#ede8e2;}
 <script>
 (function(){
   const table=document.getElementById('bookingsTable');
-  if(!table) return;
-  let sortCol=-1, sortDir=1;
-  const ths=table.querySelectorAll('th.sortable');
-  ths.forEach(th=>th.addEventListener('click',()=>{
-    const col=+th.dataset.col, type=th.dataset.type;
-    if(sortCol===col) sortDir*=-1; else{sortCol=col;sortDir=1;}
-    ths.forEach(h=>{h.classList.remove('sort-asc','sort-desc');});
-    th.classList.add(sortDir===1?'sort-asc':'sort-desc');
+  if(!table)return;
+  let sc=-1,sd=1;
+  table.querySelectorAll('th.sortable').forEach(th=>th.addEventListener('click',()=>{
+    const col=+th.dataset.col,type=th.dataset.type;
+    if(sc===col)sd*=-1;else{sc=col;sd=1;}
+    table.querySelectorAll('th').forEach(h=>h.classList.remove('sort-asc','sort-desc'));
+    th.classList.add(sd===1?'sort-asc':'sort-desc');
     const tbody=table.querySelector('tbody');
-    const rows=[...tbody.querySelectorAll('tr')].filter(r=>r.cells.length>1);
-    rows.sort((a,b)=>{
-      let av=a.cells[col]?.textContent.trim()||'';
-      let bv=b.cells[col]?.textContent.trim()||'';
+    [...tbody.querySelectorAll('tr')].filter(r=>r.cells.length>1).sort((a,b)=>{
+      let av=a.cells[col]?.textContent.trim()||'',bv=b.cells[col]?.textContent.trim()||'';
       if(type==='date'){av=av.split('/').reverse().join('');bv=bv.split('/').reverse().join('');}
-      else if(type==='num'){av=parseFloat(av)||0;bv=parseFloat(bv)||0;return(av-bv)*sortDir;}
-      else if(type==='time'){
-        const toMin=s=>{const m=s.match(\/(\d+):(\d+)\s*(am|pm)\/i);if(!m)return 0;let h=+m[1],mn=+m[2],p=m[3].toLowerCase();if(p==='pm'&&h!==12)h+=12;if(p==='am'&&h===12)h=0;return h*60+mn;};
-        av=toMin(av);bv=toMin(bv);return(av-bv)*sortDir;
-      }
-      return av.localeCompare(bv)*sortDir;
-    });
-    rows.forEach(r=>tbody.appendChild(r));
+      else if(type==='num')return(parseFloat(av)-parseFloat(bv))*sd;
+      else if(type==='time'){const f=s=>{const m=s.match(/(\d+):(\d+)\s*(am|pm)/i);if(!m)return 0;let h=+m[1];const p=m[3].toLowerCase();if(p==='pm'&&h!==12)h+=12;if(p==='am'&&h===12)h=0;return h*60+ +m[2];};return(f(av)-f(bv))*sd;}
+      return av.localeCompare(bv)*sd;
+    }).forEach(r=>tbody.appendChild(r));
   }));
 })();
 <\/script>
@@ -200,32 +226,31 @@ tr:hover td{background:#ede8e2;}
 
 // ── Main ───────────────────────────────────────────────────────────────────
 async function main() {
-  // Report window: past 4 weeks (Mon–Sun)
-  const today = new Date();
-  const to    = dateKey(today);
+  const today  = new Date();
+  const to     = dateKey(today);
   const from4w = new Date(today); from4w.setDate(today.getDate()-28);
-  const from  = dateKey(from4w);
+  const from   = dateKey(from4w);
 
-  console.log(`Fetching data for ${from} → ${to} …`);
+  console.log(`Fetching bookings and blocks for ${from} → ${to} …`);
 
-  const [bRes, blRes] = await Promise.all([
-    db.from('bookings').select('*').gte('date_str', from).lte('date_str', to),
-    db.from('blocks').select('*').gte('date_str', from).lte('date_str', to)
+  // Use Supabase REST API with date range filters
+  const [bookings, blocks] = await Promise.all([
+    supabaseFetch('bookings', `date_str=gte.${from}&date_str=lte.${to}&select=*`),
+    supabaseFetch('blocks',   `date_str=gte.${from}&date_str=lte.${to}&select=*`)
   ]);
 
-  if (bRes.error)  { console.error('Bookings error:', bRes.error);  process.exit(1); }
-  if (blRes.error) { console.error('Blocks error:',   blRes.error); process.exit(1); }
+  if (!Array.isArray(bookings)) { console.error('Bookings error:', bookings); process.exit(1); }
+  if (!Array.isArray(blocks))   { console.error('Blocks error:',   blocks);   process.exit(1); }
 
-  // Build bookingsMap
   const bookingsMap = {};
-  for (const row of bRes.data) bookingsMap[bookingKey(row.date_str, row.slot)] = row;
+  for (const row of bookings) bookingsMap[bookingKey(row.date_str, row.slot)] = row;
 
-  const data = buildReportData(bookingsMap, blRes.data, from, to);
+  const data = buildReportData(bookingsMap, blocks, from, to);
   const html = generateHTML(data);
 
   const filename = `flow-cytometer-report-${from}-${to}.html`;
   fs.writeFileSync(filename, html, 'utf8');
-  console.log(`Report written to ${filename}`);
+  console.log(`✓ Report written: ${filename}`);
   console.log(`  Bookings: ${data.bookingSummary.length}`);
   console.log(`  Blocks:   ${data.blockSummary.length}`);
   console.log(`  PI labs:  ${Object.keys(data.byPI).length}`);
