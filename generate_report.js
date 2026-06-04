@@ -227,13 +227,13 @@ tr:hover td{background:#ede8e2;}
 // ── Main ───────────────────────────────────────────────────────────────────
 async function main() {
   const today  = new Date();
-  // Find Sunday of current week (week runs Sun → Sat)
+  // Find Sunday of the PREVIOUS week (week runs Sun → Sat)
   const day = today.getDay(); // 0=Sun, 1=Mon ... 6=Sat
-  const sunday = new Date(today); sunday.setDate(today.getDate() - day);
-  // Saturday = Sunday + 6
-  const saturday = new Date(sunday); saturday.setDate(sunday.getDate() + 6);
-  const from = dateKey(sunday);
-  const to   = dateKey(saturday);
+  const thisSunday = new Date(today); thisSunday.setDate(today.getDate() - day);
+  const lastSunday = new Date(thisSunday); lastSunday.setDate(thisSunday.getDate() - 7);
+  const lastSaturday = new Date(lastSunday); lastSaturday.setDate(lastSunday.getDate() + 6);
+  const from = dateKey(lastSunday);
+  const to   = dateKey(lastSaturday);
 
   console.log(`Fetching bookings and blocks for ${from} → ${to} …`);
 
