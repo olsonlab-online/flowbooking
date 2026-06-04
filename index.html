@@ -569,9 +569,13 @@ function getDeviceSig(){
     navigator.hardwareConcurrency||'',
     navigator.platform||''
   ].join('|');
-  // Simple non-crypto hash (FNV-1a style)
+  // FNV-1a 32-bit — avoids signed overflow by keeping arithmetic within safe integer range
   let h=2166136261;
-  for(let i=0;i<raw.length;i++){h^=raw.charCodeAt(i);h=(h*16777619)>>>0;}
+  for(let i=0;i<raw.length;i++){
+    h^=raw.charCodeAt(i);
+    h=(h>>>0)*16777619;   // keep unsigned via >>>0 *before* multiply
+    h=h>>>0;              // clamp back to 32-bit unsigned after multiply
+  }
   const sig='ds_'+h.toString(36);
   localStorage.setItem('fc_device_sig',sig);
   return sig;
@@ -662,7 +666,25 @@ function subscribeRealtime(){
     .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' }, payload => {
       handleBlockChange(payload);
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, payload => {
+      handleUserChange(payload);
+    })
     .subscribe();
+}
+
+function handleUserChange(payload){
+  const { eventType, new: newRow, old: oldRow } = payload;
+  if(eventType === 'INSERT'){
+    if(!usersList.some(u=>u.id===newRow.id)) usersList.push(newRow);
+  } else if(eventType === 'UPDATE'){
+    const idx=usersList.findIndex(u=>u.id===newRow.id);
+    if(idx>=0) usersList[idx]=newRow; else usersList.push(newRow);
+  } else if(eventType === 'DELETE'){
+    usersList=usersList.filter(u=>u.id!==oldRow.id);
+  }
+  usersList.sort((a,b)=>a.name.localeCompare(b.name));
+  populateDataLists();
+  if(isAdminAuthed) renderDirTable();
 }
 
 function handleBookingChange(payload){
@@ -1726,12 +1748,13 @@ async function dirSaveAllChanges(){
   for(const [id, fields] of Object.entries(pending)){
     const u=usersList.find(x=>x.id===id); if(!u) continue;
     const n=fields.name||u.name, p=fields.pi||u.pi;
-    if(n===u.name&&p===u.pi) continue; // no change
+    if(n===u.name&&p===u.pi) continue;
     const{error}=await db.from('users').update({name:n,pi:p}).eq('id',id);
     if(error){ anyFail=true; console.error('Save error',error); continue; }
     u.name=n; u.pi=p;
   }
   usersList.sort((a,b)=>a.name.localeCompare(b.name));
+  // Refresh all dropdowns immediately so changes show in booking selects
   populateDataLists();
   renderDirTable();
   showToast(anyFail?'Some changes failed to save.':'Changes saved.');
