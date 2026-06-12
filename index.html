@@ -131,7 +131,7 @@
     /* MODALS */
     .modal-overlay{display:none;position:fixed;inset:0;background:rgba(20,25,28,.82);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;}
     .modal-overlay.open{display:flex;}
-    .modal{background:var(--surface2);border:1px solid var(--border-light);border-radius:14px;padding:32px;width:100%;max-width:500px;position:relative;max-height:90vh}
+    .modal{background:var(--surface2);border:1px solid var(--border-light);border-radius:14px;padding:32px;width:100%;max-width:580px;position:relative;max-height:90vh}
     .modal h3{font-family:'Google Sans',sans-serif;font-size:1.3rem;font-weight:800;color:var(--linen);margin-bottom:8px;}
     .modal .slot-info{font-size:.95rem;font-weight:600;color:var(--peach);margin-bottom:22px;padding:10px 14px;background:rgba(228,164,137,.1);border-radius:8px;border:1px solid rgba(228,164,137,.25);}
     .form-group{margin-bottom:18px;}
@@ -441,6 +441,14 @@
       <button class="btn btn-note" onclick="saveNotes()">Save Notes</button>
       <button class="btn btn-danger" id="cancelBookingBtn" onclick="cancelCurrentBooking()">Remove Booking</button>
     </div>
+    <!-- Partial cancel — early finish -->
+    <div id="partialCancelSection" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(200,168,74,.15);">
+      <p style="font-size:.85rem;color:var(--text-dim);margin-bottom:10px;">🕐 Finished early? Free up unused slots:</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="partialCancelFrom" style="flex:1;min-width:160px;background:var(--surface);border:2px solid rgba(200,168,74,.3);border-radius:8px;padding:8px 12px;font-family:'Google Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;"></select>
+        <button class="btn btn-danger" style="min-height:38px;padding:6px 16px;font-size:.88rem;" onclick="partialCancelBooking()">Free from this slot</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -586,10 +594,10 @@ function getDeviceSig(){
 // e.g. 'o-brain' → 'O-Brain', 'john doe' → 'John Doe', 'OLSON' → 'Olson'
 function normName(raw){
   if(!raw) return '';
-  return raw.trim()
-    .split(' ')
-    .map(word => word.split('-').map(seg => seg.split('/').map(s => s ? s.charAt(0).toUpperCase()+s.slice(1).toLowerCase() : '').join('/')).join('-'))
-    .join(' ');
+  // Capitalize first letter after: start of string, space, hyphen, slash, apostrophe
+  return raw.trim().toLowerCase().replace(/(^|[\s\-\/'])([a-z])/g,
+    (_, sep, ch) => sep + ch.toUpperCase()
+  );
 }
 
 function isSlotPast(dateObj,slot){
@@ -823,9 +831,21 @@ function renderCalendar(){
             <span class="bk-period">${timeStr}</span>`:'';
         html+=`<div class="${cls}" onclick="openViewModal('${bKey}','${dKey}',${clStart})">${inner}</div>`;
 
-      } else if(past||!inWin){
+      } else if(!inWin){
         cls+=' past';
         html+=`<div class="${cls}"></div>`;
+      } else if(past){
+        // Slot start has passed — but only block it if the slot END has also passed
+        // i.e. allow booking if we're currently inside the slot window
+        const slotEndTime=new Date(d);
+        slotEndTime.setHours(Math.floor((s+1)/2),(s+1)%2===0?0:30,0,0);
+        if(slotEndTime<=new Date()){
+          cls+=' past';
+          html+=`<div class="${cls}"></div>`;
+        } else {
+          // Still within this slot's window — allow booking
+          html+=`<div class="${cls}" onclick="openBookModal('${dKey}',${s})"></div>`;
+        }
       } else {
         html+=`<div class="${cls}" onclick="openBookModal('${dKey}',${s})"></div>`;
       }
@@ -971,6 +991,30 @@ function openViewModal(bKey,dateStr,slot){
   document.getElementById('viewNotesInput').value=b.notes||'';
   const canCancel = isAdminAuthed || (!past && (!b.device_sig || b.device_sig===deviceSig));
   document.getElementById('cancelBookingBtn').style.display=canCancel?'inline-flex':'none';
+
+  // Partial cancel — show if: today, booking in progress, device matches, more than 1 slot left
+  const partialSection=document.getElementById('partialCancelSection');
+  const fromSel=document.getElementById('partialCancelFrom');
+  const now=new Date();
+  const todayStr=dateKey(now);
+  const nowSlot=Math.floor((now.getHours()*60+now.getMinutes())/30);
+  const canPartial = (dateStr===todayStr)
+    && (isAdminAuthed || (!b.device_sig || b.device_sig===deviceSig))
+    && nowSlot >= startSlot        // booking has started
+    && nowSlot < endSlot-1;        // at least one future slot remains after current
+  partialSection.style.display=canPartial?'block':'none';
+  if(canPartial){
+    // Populate dropdown: from the next slot after current time up to the last slot of booking
+    fromSel.innerHTML='';
+    // First future slot = nowSlot+1 (the next 30-min boundary)
+    const firstCancelable=Math.max(startSlot+1, nowSlot+1);
+    for(let s=firstCancelable;s<endSlot;s++){
+      const opt=document.createElement('option');
+      opt.value=s;
+      opt.textContent=`${slotToLabel(s)} onwards (keep until ${slotToLabel(s)})`;
+      fromSel.appendChild(opt);
+    }
+  }
   openModal('viewModal');
 }
 
@@ -1026,9 +1070,49 @@ async function cancelCurrentBooking(){
   if(isAdminAuthed) renderAdminPanel();
 }
 
-// ══════════════════════════════════════════
-// ADMIN
-// ══════════════════════════════════════════
+async function partialCancelBooking(){
+  if(!currentViewKey) return;
+  const b=bookingsMap[currentViewKey]; if(!b) return;
+  const cancelFromSlot=parseInt(document.getElementById('partialCancelFrom').value);
+  if(isNaN(cancelFromSlot)) return;
+
+  const ds=b.date_str;
+  const ck=b.cluster_key;
+  const startSlot=b.cluster_start!==null&&b.cluster_start!==undefined?b.cluster_start:b.slot;
+  const endSlot  =(b.cluster_end  !==null&&b.cluster_end  !==undefined?b.cluster_end:b.slot)+1;
+
+  if(!confirm(`Free slots from ${slotToLabel(cancelFromSlot)} to ${slotToLabel(endSlot)}?\nYour booking will be kept from ${slotToLabel(startSlot)} to ${slotToLabel(cancelFromSlot)}.`)) return;
+
+  // 1. Delete the slots from cancelFromSlot to endSlot
+  const keysToDelete=Object.keys(bookingsMap).filter(k=>{
+    const r=bookingsMap[k];
+    return r.date_str===ds && r.slot>=cancelFromSlot && (ck?r.cluster_key===ck:r.id===b.id);
+  });
+  let failed=false;
+  for(const k of keysToDelete){
+    const{error}=await db.from('bookings').delete().eq('id',bookingsMap[k].id);
+    if(error){failed=true;console.error('Delete error',error);}
+    else delete bookingsMap[k];
+  }
+  if(failed){showToast('Some slots failed to remove.',true);return;}
+
+  // 2. Update cluster_end on the remaining slots to point to the new last slot
+  const newClusterEnd=cancelFromSlot-1;
+  const keysToUpdate=Object.keys(bookingsMap).filter(k=>{
+    const r=bookingsMap[k];
+    return r.date_str===ds && (ck?r.cluster_key===ck:r.id===b.id);
+  });
+  for(const k of keysToUpdate){
+    const r=bookingsMap[k];
+    const{error}=await db.from('bookings').update({cluster_end:newClusterEnd}).eq('id',r.id);
+    if(!error) r.cluster_end=newClusterEnd;
+  }
+
+  closeModal('viewModal');
+  showToast(`Freed slots from ${slotToLabel(cancelFromSlot)} — booking now ends at ${slotToLabel(cancelFromSlot)}.`);
+  renderCalendar();
+  if(isAdminAuthed) renderAdminPanel();
+}
 function showAdmin(){
   if(isAdminAuthed){renderAdminPanel();document.getElementById('bookingPage').classList.add('hidden');document.getElementById('adminPanel').classList.add('open');}
   else{openModal('adminLoginModal');setTimeout(()=>document.getElementById('adminPassword').focus(),100);}
@@ -1748,16 +1832,39 @@ async function dirSaveAllChanges(){
   for(const [id, fields] of Object.entries(pending)){
     const u=usersList.find(x=>x.id===id); if(!u) continue;
     const n=fields.name||u.name, p=fields.pi||u.pi;
-    if(n===u.name&&p===u.pi) continue;
-    const{error}=await db.from('users').update({name:n,pi:p}).eq('id',id);
-    if(error){ anyFail=true; console.error('Save error',error); continue; }
+    if(n===u.name&&p===u.pi) continue; // no change
+
+    // 1. Update users table
+    const{error:userErr}=await db.from('users').update({name:n,pi:p}).eq('id',id);
+    if(userErr){ anyFail=true; console.error('User save error',userErr); continue; }
+
+    // 2. Update all bookings that had the old name → new name
+    if(n!==u.name){
+      const{error:bErr}=await db.from('bookings').update({name:n}).eq('name',u.name);
+      if(bErr){ console.error('Booking name update error',bErr); anyFail=true; }
+      else {
+        // Update local bookingsMap too
+        Object.values(bookingsMap).forEach(b=>{ if(b.name===u.name) b.name=n; });
+      }
+    }
+
+    // 3. Update all bookings that had the old PI → new PI
+    if(p!==u.pi){
+      const{error:pErr}=await db.from('bookings').update({pi:p}).eq('pi',u.pi);
+      if(pErr){ console.error('Booking PI update error',pErr); anyFail=true; }
+      else {
+        Object.values(bookingsMap).forEach(b=>{ if(b.pi===u.pi) b.pi=p; });
+      }
+    }
+
     u.name=n; u.pi=p;
   }
   usersList.sort((a,b)=>a.name.localeCompare(b.name));
-  // Refresh all dropdowns immediately so changes show in booking selects
   populateDataLists();
   renderDirTable();
-  showToast(anyFail?'Some changes failed to save.':'Changes saved.');
+  renderCalendar();
+  if(isAdminAuthed) renderAdminPanel();
+  showToast(anyFail?'Some changes failed to save.':'Changes saved — bookings updated.');
 }
 
 async function dirAddUser(){
