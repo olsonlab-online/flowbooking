@@ -507,9 +507,9 @@ const ADMIN_PASSWORD_HASH = '39d15e1d7e45337d6b89d317ed61e6875ac30cf3057a53e6d6b
 
 // ── Slot / time constants ─────────────────
 const SLOT_H               = 68;
-const SLOT_NIGHT_EARLY_START = 0,  SLOT_NIGHT_EARLY_END = 12;
+const SLOT_NIGHT_EARLY_START = 0,  SLOT_NIGHT_EARLY_END = 13;
 const SLOT_WORK_START        = 18, SLOT_WORK_END        = 33;
-const SLOT_NIGHT_LATE_START  = 40, SLOT_NIGHT_LATE_END  = 47;
+const SLOT_NIGHT_LATE_START  = 38, SLOT_NIGHT_LATE_END  = 47;
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -765,7 +765,7 @@ function renderCalendar(){
   html+=`<div class="offhours-toggle-row" onclick="toggleNightEarly()">
     <div class="offhours-toggle-label${nightEarlyExpanded?' expanded':''}">
       <span class="toggle-icon">▶</span>
-      <span>${nightEarlyExpanded?'Hide':'Show'} off-hours &nbsp;<strong>12:00 am – 6:00 am</strong></span>
+      <span>${nightEarlyExpanded?'Hide':'Show'} off-hours &nbsp;<strong>12:00 am – 7:00 am</strong></span>
     </div></div>`;
 
   for(let s=0;s<48;s++){
@@ -773,7 +773,7 @@ function renderCalendar(){
       html+=`<div class="offhours-toggle-row" onclick="toggleNightLate()">
         <div class="offhours-toggle-label${nightLateExpanded?' expanded':''}">
           <span class="toggle-icon">▶</span>
-          <span>${nightLateExpanded?'Hide':'Show'} off-hours &nbsp;<strong>8:00 pm – 12:00 am</strong></span>
+          <span>${nightLateExpanded?'Hide':'Show'} off-hours &nbsp;<strong>7:00 pm – 12:00 am</strong></span>
         </div></div>`;
     }
     if(isNightEarly(s)&&!nightEarlyExpanded) continue;
@@ -2169,6 +2169,14 @@ function refreshBookEndTimes(dateStr, startSlot, isInit){
 // ══════════════════════════════════════════
 populateTimeSelects();
 loadAllData().then(()=>subscribeRealtime());
+
+// ══════════════════════════════════════════
+// AUTO-REFRESH
+// Reload the page every hour to keep date/time-dependent
+// UI (today highlight, past slots, off-hours, etc.) accurate
+// for pages left open for long periods.
+// ══════════════════════════════════════════
+setInterval(()=>{ location.reload(); }, 60*60*1000); // 1 hour
 </script>
 </body>
 </html>
