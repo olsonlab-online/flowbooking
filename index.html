@@ -80,6 +80,9 @@
     .time-slot.off-hours{background:var(--offhour-bg);}
     .time-slot.normal{background:var(--normal-bg);}
     .time-slot.past{opacity:.42;cursor:default;}
+    /* Admin full-calendar: past slots stay dimmed but remain clickable/bookable */
+    .time-slot.admin-past-slot{opacity:.55;}
+    .time-slot.admin-past-slot:not(.booked-cell):not(.blocked-cell):hover{opacity:1;}
     .time-slot.booked-cell{background:#5a4510;cursor:pointer;}
     .time-slot.booked-cell.past{background:#1e1804;opacity:1;cursor:pointer;}
     .time-slot:not(.booked-cell):not(.past):not(.blocked-cell):hover{background:rgba(228,164,137,.18);box-shadow:inset 0 0 0 2px rgba(228,164,137,.7);}
@@ -172,6 +175,9 @@
     .admin-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-mid);}
     .admin-table tr:last-child td{border-bottom:none;}
     .admin-table tr:hover td{background:var(--surface2);}
+    .dir-sort-th{cursor:pointer;user-select:none;}
+    .dir-sort-th:hover{color:#a0f0f0!important;}
+    .dir-sort-arrow{display:inline-block;margin-left:5px;font-size:.72rem;color:#70d0d0;min-width:.8em;}
     .multi-date-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
     .tag-chip{background:rgba(60,74,84,.8);border:1px solid var(--border-light);border-radius:6px;padding:4px 10px;font-size:.82rem;color:var(--text-mid);display:inline-flex;align-items:center;gap:6px;}
     .tag-chip button{background:none;border:none;color:#c07070;cursor:pointer;font-size:.85rem;padding:0;line-height:1;}
@@ -359,8 +365,8 @@
       <div style="max-height:300px;overflow-y:auto;border:1px solid rgba(60,140,140,.2);border-radius:8px;">
         <table class="admin-table" style="margin:0;">
           <thead><tr>
-            <th style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">Name</th>
-            <th style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">PI / Lab</th>
+            <th class="dir-sort-th" onclick="dirSortBy('name')" style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">Name<span class="dir-sort-arrow" id="dirArrowName"></span></th>
+            <th class="dir-sort-th" onclick="dirSortBy('pi')" style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">PI / Lab<span class="dir-sort-arrow" id="dirArrowPI"></span></th>
             <th style="color:#70d0d0;position:sticky;top:0;background:#0e2a2a;z-index:1;">Action</th>
           </tr></thead>
           <tbody id="dirTableBody"></tbody>
@@ -381,6 +387,32 @@
         <button class="btn btn-export" onclick="exportReportHTML()">Download HTML Report</button>
       </div>
       <p style="font-size:.82rem;color:var(--text-dim)">Report includes booking time, block/maintenance time per week and totals.</p>
+    </div>
+
+    <!-- Full Calendar — unrestricted admin booking, expandable up to a year back -->
+    <div class="card" style="border-color:rgba(200,168,74,.35);background:linear-gradient(135deg,#2a2010 0%,var(--surface) 60%);">
+      <div id="adminCalToggleHeader" onclick="toggleAdminCalSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">
+        <div class="section-title" style="font-size:.9rem;margin-bottom:0;color:#f0d890;">🗓️ Full Calendar — Book / Edit Any Date</div>
+        <span id="adminCalChevron" style="font-size:2.0rem;color:#f0d890;transition:transform .15s;line-height:1;">▸</span>
+      </div>
+      <div id="adminCalBody" style="display:none;margin-top:6px;">
+        <p style="font-size:.82rem;color:var(--text-dim);margin-bottom:14px;">No date restrictions here — navigate up to a year back and freely book or edit past dates.</p>
+        <div class="week-nav">
+          <h2 id="adminCalWeekLabel"></h2>
+          <div class="week-nav-btns">
+            <button class="btn" id="adminCalPrevBtn" onclick="adminCalChangeWeek(-1)">← Prev</button>
+            <button class="btn" onclick="adminCalGoToday()">Today</button>
+            <button class="btn" id="adminCalNextBtn" onclick="adminCalChangeWeek(1)">Next →</button>
+          </div>
+        </div>
+        <div class="calendar" id="adminCalendar"></div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot work"></div> Working hours (09:00–17:00)</div>
+          <div class="legend-item"><div class="legend-dot offhour"></div> Off hours</div>
+          <div class="legend-item"><div class="legend-dot booked"></div> Booked</div>
+          <div class="legend-item"><div class="legend-dot booked-past"></div> Booked (past)</div>
+        </div>
+      </div>
     </div>
 
   </main>
@@ -507,9 +539,9 @@ const ADMIN_PASSWORD_HASH = '39d15e1d7e45337d6b89d317ed61e6875ac30cf3057a53e6d6b
 
 // ── Slot / time constants ─────────────────
 const SLOT_H               = 68;
-const SLOT_NIGHT_EARLY_START = 0,  SLOT_NIGHT_EARLY_END = 13;
+const SLOT_NIGHT_EARLY_START = 0,  SLOT_NIGHT_EARLY_END = 12;
 const SLOT_WORK_START        = 18, SLOT_WORK_END        = 33;
-const SLOT_NIGHT_LATE_START  = 38, SLOT_NIGHT_LATE_END  = 47;
+const SLOT_NIGHT_LATE_START  = 40, SLOT_NIGHT_LATE_END  = 47;
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -529,6 +561,7 @@ let usersList   = [];  // array of {id, name, pi} from users table
 let deviceSig = '';    // stable device fingerprint stored in localStorage
 
 let currentWeekOffset = 0, pendingSlot = null, currentViewKey = null;
+let adminCalWeekOffset = 0, adminCalNightEarlyExpanded = false, adminCalNightLateExpanded = false, adminCalExpanded = false;
 let isAdminAuthed = false, nightEarlyExpanded = false, nightLateExpanded = false;
 let blockPendingDates = [];
 let adminBookPendingDates = [];
@@ -765,7 +798,7 @@ function renderCalendar(){
   html+=`<div class="offhours-toggle-row" onclick="toggleNightEarly()">
     <div class="offhours-toggle-label${nightEarlyExpanded?' expanded':''}">
       <span class="toggle-icon">▶</span>
-      <span>${nightEarlyExpanded?'Hide':'Show'} off-hours &nbsp;<strong>12:00 am – 7:00 am</strong></span>
+      <span>${nightEarlyExpanded?'Hide':'Show'} off-hours &nbsp;<strong>12:00 am – 6:00 am</strong></span>
     </div></div>`;
 
   for(let s=0;s<48;s++){
@@ -773,7 +806,7 @@ function renderCalendar(){
       html+=`<div class="offhours-toggle-row" onclick="toggleNightLate()">
         <div class="offhours-toggle-label${nightLateExpanded?' expanded':''}">
           <span class="toggle-icon">▶</span>
-          <span>${nightLateExpanded?'Hide':'Show'} off-hours &nbsp;<strong>7:00 pm – 12:00 am</strong></span>
+          <span>${nightLateExpanded?'Hide':'Show'} off-hours &nbsp;<strong>8:00 pm – 12:00 am</strong></span>
         </div></div>`;
     }
     if(isNightEarly(s)&&!nightEarlyExpanded) continue;
@@ -847,6 +880,135 @@ function renderCalendar(){
           html+=`<div class="${cls}" onclick="openBookModal('${dKey}',${s})"></div>`;
         }
       } else {
+        html+=`<div class="${cls}" onclick="openBookModal('${dKey}',${s})"></div>`;
+      }
+    }
+    html+='</div>';
+  }
+  html+='</div>';
+  cal.innerHTML=html;
+}
+
+// ══════════════════════════════════════════
+// ADMIN FULL CALENDAR (unrestricted — book/edit any date, up to 1 year back)
+// ══════════════════════════════════════════
+const ADMIN_CAL_MAX_WEEKS_BACK = 52, ADMIN_CAL_MAX_WEEKS_FWD = 52;
+
+function adminCalChangeWeek(dir){
+  adminCalWeekOffset=Math.max(-ADMIN_CAL_MAX_WEEKS_BACK,Math.min(ADMIN_CAL_MAX_WEEKS_FWD,adminCalWeekOffset+dir));
+  renderAdminCalendar();
+}
+function adminCalGoToday(){adminCalWeekOffset=0;renderAdminCalendar();}
+function adminCalToggleNightEarly(){adminCalNightEarlyExpanded=!adminCalNightEarlyExpanded;renderAdminCalendar();}
+function adminCalToggleNightLate() {adminCalNightLateExpanded =!adminCalNightLateExpanded; renderAdminCalendar();}
+
+function toggleAdminCalSection(){
+  adminCalExpanded=!adminCalExpanded;
+  const body=document.getElementById('adminCalBody');
+  const chevron=document.getElementById('adminCalChevron');
+  if(body) body.style.display=adminCalExpanded?'block':'none';
+  if(chevron) chevron.style.transform=adminCalExpanded?'rotate(90deg)':'rotate(0deg)';
+  if(adminCalExpanded) renderAdminCalendar(); // lazy-render on first expand
+}
+
+function renderAdminCalendar(){
+  const cal=document.getElementById('adminCalendar');
+  if(!cal) return; // panel not in DOM (shouldn't happen) — bail safely
+
+  const weekStart=getWeekStart(adminCalWeekOffset);
+  const days=Array.from({length:7},(_,i)=>{const d=new Date(weekStart);d.setDate(d.getDate()+i);return d;});
+  const ws=days[0],we=days[6];
+  document.getElementById('adminCalWeekLabel').textContent=
+    `${MONTHS[ws.getMonth()]} ${ws.getDate()} – ${MONTHS[we.getMonth()]} ${we.getDate()}, ${we.getFullYear()}`;
+  document.getElementById('adminCalPrevBtn').disabled=adminCalWeekOffset<=-ADMIN_CAL_MAX_WEEKS_BACK;
+  document.getElementById('adminCalNextBtn').disabled=adminCalWeekOffset>=ADMIN_CAL_MAX_WEEKS_FWD;
+
+  const today=new Date(); today.setHours(0,0,0,0);
+  let html='';
+
+  // Header
+  html+='<div class="cal-header"><div class="cal-header-cell"></div>';
+  for(const d of days){
+    const isTod=d.getTime()===today.getTime();
+    const isWknd=d.getDay()===0||d.getDay()===6;
+    html+=`<div class="cal-header-cell${isTod?' today':''}${isWknd?' weekend':''}">
+      ${DAYS[d.getDay()]}<span class="day-num">${d.getDate()}</span></div>`;
+  }
+  html+='</div>';
+
+  html+=`<div class="cal-rows-wrapper">`;
+
+  // Early off-hours toggle
+  html+=`<div class="offhours-toggle-row" onclick="adminCalToggleNightEarly()">
+    <div class="offhours-toggle-label${adminCalNightEarlyExpanded?' expanded':''}">
+      <span class="toggle-icon">▶</span>
+      <span>${adminCalNightEarlyExpanded?'Hide':'Show'} off-hours &nbsp;<strong>12:00 am – 6:00 am</strong></span>
+    </div></div>`;
+
+  for(let s=0;s<48;s++){
+    if(s===SLOT_NIGHT_LATE_START){
+      html+=`<div class="offhours-toggle-row" onclick="adminCalToggleNightLate()">
+        <div class="offhours-toggle-label${adminCalNightLateExpanded?' expanded':''}">
+          <span class="toggle-icon">▶</span>
+          <span>${adminCalNightLateExpanded?'Hide':'Show'} off-hours &nbsp;<strong>8:00 pm – 12:00 am</strong></span>
+        </div></div>`;
+    }
+    if(isNightEarly(s)&&!adminCalNightEarlyExpanded) continue;
+    if(isNightLate(s) &&!adminCalNightLateExpanded)  continue;
+
+    const wH=isWorkHour(s), nH=isNightEarly(s)||isNightLate(s);
+    html+=`<div class="cal-row">`;
+    html+=`<div class="time-label${wH?' work':nH?' off':''}">${slotToLabel(s)}</div>`;
+
+    for(const d of days){
+      const dKey=dateKey(d);
+      const bKey=bookingKey(dKey,s);
+      const booking=bookingsMap[bKey];
+      const past=isSlotPast(d,s);
+      const blocked=isSlotBlocked(dKey,s);
+
+      const isWeekend=d.getDay()===0||d.getDay()===6;
+      const isTodayCol=d.getTime()===today.getTime();
+      let cls='time-slot';
+      if(isWeekend) cls+=' weekend';
+      else if(wH) cls+=' work-hours'; else if(nH) cls+=' off-hours'; else cls+=' normal';
+      if(isTodayCol) cls+=' today-col';
+      if(past) cls+=' admin-past-slot';
+
+      if(blocked){
+        const[sh,sm2]=blocked.start_time.split(':').map(Number);
+        const[eh,em] =blocked.end_time.split(':').map(Number);
+        const bSS=sh*2+(sm2>=30?1:0);
+        const bES=Math.max(0,(eh*2+(em>0?1:0))-1);
+        const isFirst=(s===bSS), isLast=(s===bES);
+        cls+=' blocked-cell'+(past?' past':'');
+        if(bSS===bES){ cls+=' cluster-single'; }
+        else if(isFirst) cls+=' cluster-top';
+        else if(isLast)  cls+=' cluster-bot';
+        else             cls+=' cluster-mid';
+        const inner=isFirst
+          ?`<span class="bk-name">${escHtml(blocked.reason||'Blocked')}</span>
+            <span class="bk-period">${blocked.start_time} – ${blocked.end_time}</span>`:'';
+        html+=`<div class="${cls}" onclick="showToast('Blocked: ${escHtml(blocked.reason||'Maintenance')}',true)">${inner}</div>`;
+
+      } else if(booking){
+        cls+=' booked-cell'+(past?' past':'');
+        const clStart=booking.cluster_start!==null&&booking.cluster_start!==undefined?booking.cluster_start:s;
+        const clEnd  =booking.cluster_end  !==null&&booking.cluster_end  !==undefined?booking.cluster_end  :s;
+        const isFirst=(s===clStart), isLast=(s===clEnd);
+        if(clStart===clEnd){ cls+=' cluster-single'; }
+        else if(isFirst) cls+=' cluster-top';
+        else if(isLast)  cls+=' cluster-bot';
+        else             cls+=' cluster-mid';
+        const timeStr=`${slotToLabel(clStart)} – ${slotToLabel(clEnd+1)}`;
+        const inner=isFirst
+          ?`<span class="bk-name">${escHtml(booking.name)}</span>
+            <span class="bk-pi">${escHtml(booking.pi)}</span>
+            <span class="bk-period">${timeStr}</span>`:'';
+        html+=`<div class="${cls}" onclick="openViewModal('${bKey}','${dKey}',${clStart})">${inner}</div>`;
+
+      } else {
+        // No date/window restriction — every open slot (past or future) is bookable by admin
         html+=`<div class="${cls}" onclick="openBookModal('${dKey}',${s})"></div>`;
       }
     }
@@ -1136,6 +1298,7 @@ async function checkAdminPw(){
 }
 
 function renderAdminPanel(){
+  if(adminCalExpanded) renderAdminCalendar();
   // Bookings — date window: 3 months back to 1 month forward
   const now = new Date(); now.setHours(0,0,0,0);
   const rangeStart = new Date(now); rangeStart.setMonth(rangeStart.getMonth()-3);
@@ -1567,16 +1730,20 @@ function exportReportCSV(from,to){
   const{weeks,bookingSummary,blockSummary,totalBookingMin,totalBlockMin,byPI}=buildReportData(from,to);
   let csv='FLOW CYTOMETER USAGE REPORT — HANS 301\n';
   csv+=`Report period: ${fmtDate(from)} to ${fmtDate(to)}\n\n`;
-  csv+='=== USAGE BY PI / LAB ===\nPI / Lab,Total Time,Bookings\n';
+  csv+='=== USAGE BY PI / LAB ===\nPI / Lab,Total Time,% of Total Used Time,Bookings\n';
   Object.entries(byPI).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([pi,grp])=>{
-    csv+=`"${pi}",${fmtMin(grp.totalMin)},${grp.bookings.length}\n`;
+    const pct=totalBookingMin>0?(grp.totalMin/totalBookingMin*100).toFixed(1):'0.0';
+    csv+=`"${pi}",${fmtMin(grp.totalMin)},${pct}%,${grp.bookings.length}\n`;
   });
   csv+='\n=== BOOKINGS ===\nDate,Name,PI/Lab,Start,End,Duration (min)\n';
   bookingSummary.forEach(b=>csv+=`${fmtDate(b.date)},"${b.name}","${b.pi}",${b.start},${b.end},${b.minutes}\n`);
   csv+='\n=== MAINTENANCE BLOCKS ===\nDate,Start,End,Reason,Duration (min)\n';
   blockSummary.forEach(b=>csv+=`${fmtDate(b.date)},${b.start},${b.end},"${b.reason}",${b.minutes}\n`);
-  csv+='\n=== WEEKLY SUMMARY ===\nWeek of,Booking Time,Block Time\n';
-  Object.entries(weeks).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([wk,w])=>{csv+=`${fmtDate(wk)},${fmtMin(w.bookingMin)},${fmtMin(w.blockMin)}\n`;});
+  csv+='\n=== WEEKLY SUMMARY ===\nWeek of,Booking Time,% of Total Used Time,Block Time\n';
+  Object.entries(weeks).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([wk,w])=>{
+    const pct=totalBookingMin>0?(w.bookingMin/totalBookingMin*100).toFixed(1):'0.0';
+    csv+=`${fmtDate(wk)},${fmtMin(w.bookingMin)},${pct}%,${fmtMin(w.blockMin)}\n`;
+  });
   csv+=`\n=== TOTALS ===\nTotal Booking Time,${fmtMin(totalBookingMin)}\nTotal Block Time,${fmtMin(totalBlockMin)}\n`;
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
@@ -1587,14 +1754,18 @@ function exportReportCSV(from,to){
 
 function exportReportHTMLFn(from,to){
   const{weeks,bookingSummary,blockSummary,totalBookingMin,totalBlockMin,byPI}=buildReportData(from,to);
-  const wkRows=Object.entries(weeks).sort((a,b)=>a[0].localeCompare(b[0])).map(([wk,w])=>`<tr><td>Week of ${fmtDate(wk)}</td><td>${fmtMin(w.bookingMin)}</td><td>${fmtMin(w.blockMin)}</td></tr>`).join('');
+  const wkRows=Object.entries(weeks).sort((a,b)=>a[0].localeCompare(b[0])).map(([wk,w])=>{
+    const pct=totalBookingMin>0?(w.bookingMin/totalBookingMin*100).toFixed(1):'0.0';
+    return `<tr><td>Week of ${fmtDate(wk)}</td><td>${fmtMin(w.bookingMin)}</td><td>${pct}%</td><td>${fmtMin(w.blockMin)}</td></tr>`;
+  }).join('');
   const bkRows=bookingSummary.map(b=>`<tr><td>${fmtDate(b.date)}</td><td>${escHtml(b.name)}</td><td>${escHtml(b.pi)}</td><td>${b.start} – ${b.end}</td><td>${b.minutes} min</td></tr>`).join('');
   const blRows=blockSummary.map(b=>`<tr><td>${fmtDate(b.date)}</td><td>${b.start} – ${b.end}</td><td>${escHtml(b.reason)}</td><td>${b.minutes} min</td></tr>`).join('');
 
   // PI/Lab breakdown — sorted alphabetically by PI name
-  const piRows=Object.entries(byPI).sort((a,b)=>a[0].localeCompare(b[0])).map(([pi,grp])=>
-    `<tr><td>${escHtml(pi)}</td><td>${grp.bookings.length}</td><td>${fmtMin(grp.totalMin)}</td></tr>`
-  ).join('');
+  const piRows=Object.entries(byPI).sort((a,b)=>a[0].localeCompare(b[0])).map(([pi,grp])=>{
+    const pct=totalBookingMin>0?(grp.totalMin/totalBookingMin*100).toFixed(1):'0.0';
+    return `<tr><td>${escHtml(pi)}</td><td>${grp.bookings.length}</td><td>${fmtMin(grp.totalMin)}</td><td>${pct}%</td></tr>`;
+  }).join('');
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Flow Cytometer Report ${from} – ${to}</title>
   <link href='https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap' rel='stylesheet'>
@@ -1621,8 +1792,8 @@ function exportReportHTMLFn(from,to){
     <div class="total-item"><div class="val">${Object.keys(byPI).length}</div><div class="lbl">PI Labs</div></div>
   </div>
   <h2>Usage by PI / Lab</h2>
-  <table><thead><tr><th>PI / Lab</th><th>Bookings</th><th>Total Time</th></tr></thead><tbody>${piRows||'<tr><td colspan="3" style="color:#999">No bookings in this period.</td></tr>'}</tbody></table>
-  <h2>Weekly Summary</h2><table><thead><tr><th>Week</th><th>Booking Time</th><th>Block/Maintenance Time</th></tr></thead><tbody>${wkRows}</tbody></table>
+  <table><thead><tr><th>PI / Lab</th><th>Bookings</th><th>Total Time</th><th>% of Total Used Time</th></tr></thead><tbody>${piRows||'<tr><td colspan="4" style="color:#999">No bookings in this period.</td></tr>'}</tbody></table>
+  <h2>Weekly Summary</h2><table><thead><tr><th>Week</th><th>Booking Time</th><th>% of Total Used Time</th><th>Block/Maintenance Time</th></tr></thead><tbody>${wkRows||'<tr><td colspan="4" style="color:#999">No data in this period.</td></tr>'}</tbody></table>
   <h2>All Bookings</h2>
   <table id="bookingsTable"><thead><tr>
     <th class="sortable" data-col="0" data-type="date">Date</th>
@@ -1793,9 +1964,34 @@ async function upsertUserDir(name, pi){
   }
 }
 
+// User Directory sort state — single active column, 3-state cycle: asc(1) -> desc(2) -> default(0)
+let dirSortCol=null, dirSortDir=0;
+function dirSortBy(col){
+  if(dirSortCol!==col){ dirSortCol=col; dirSortDir=1; }
+  else{
+    dirSortDir++;
+    if(dirSortDir>2){ dirSortCol=null; dirSortDir=0; }
+  }
+  renderDirTable();
+}
+
 function renderDirTable(){
   const tbody=document.getElementById('dirTableBody'); if(!tbody) return;
-  const sorted=[...usersList].sort((a,b)=>a.name.localeCompare(b.name));
+  let sorted=[...usersList];
+  if(dirSortCol==='name'){
+    sorted.sort((a,b)=>a.name.localeCompare(b.name)*(dirSortDir===2?-1:1));
+  } else if(dirSortCol==='pi'){
+    sorted.sort((a,b)=>a.pi.localeCompare(b.pi)*(dirSortDir===2?-1:1));
+  } else {
+    sorted.sort((a,b)=>a.name.localeCompare(b.name)); // default order
+  }
+
+  // Update header arrow indicators
+  const arrowName=document.getElementById('dirArrowName');
+  const arrowPI  =document.getElementById('dirArrowPI');
+  if(arrowName) arrowName.textContent = dirSortCol==='name' ? (dirSortDir===1?'▲':'▼') : '';
+  if(arrowPI)   arrowPI.textContent   = dirSortCol==='pi'   ? (dirSortDir===1?'▲':'▼') : '';
+
   tbody.innerHTML=sorted.length?sorted.map(u=>`
     <tr id="dirrow-${u.id}">
       <td><input type="text" data-id="${u.id}" data-field="name" value="${escHtml(u.name)}"
@@ -2169,14 +2365,6 @@ function refreshBookEndTimes(dateStr, startSlot, isInit){
 // ══════════════════════════════════════════
 populateTimeSelects();
 loadAllData().then(()=>subscribeRealtime());
-
-// ══════════════════════════════════════════
-// AUTO-REFRESH
-// Reload the page every hour to keep date/time-dependent
-// UI (today highlight, past slots, off-hours, etc.) accurate
-// for pages left open for long periods.
-// ══════════════════════════════════════════
-setInterval(()=>{ location.reload(); }, 60*60*1000); // 1 hour
 </script>
 </body>
 </html>
