@@ -393,7 +393,7 @@
     <div class="card" style="border-color:rgba(200,168,74,.35);background:linear-gradient(135deg,#2a2010 0%,var(--surface) 60%);">
       <div id="adminCalToggleHeader" onclick="toggleAdminCalSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">
         <div class="section-title" style="font-size:.9rem;margin-bottom:0;color:#f0d890;">🗓️ Full Calendar — Book / Edit Any Date</div>
-        <span id="adminCalChevron" style="font-size:2.0rem;color:#f0d890;transition:transform .15s;line-height:1;">▸</span>
+        <span id="adminCalChevron" style="font-size:1.4rem;color:#f0d890;transition:transform .15s;line-height:1;">▸</span>
       </div>
       <div id="adminCalBody" style="display:none;margin-top:6px;">
         <p style="font-size:.82rem;color:var(--text-dim);margin-bottom:14px;">No date restrictions here — navigate up to a year back and freely book or edit past dates.</p>
@@ -520,6 +520,20 @@
   </div>
 </div>
 
+<!-- STALE PAGE MODAL — forces a refresh after the page has been open too long -->
+<div class="modal-overlay" id="staleModal">
+  <div class="modal" style="max-width:420px;text-align:center;">
+    <div style="font-size:2.2rem;margin-bottom:10px;">⏱️</div>
+    <h3>Page Has Been Open a While</h3>
+    <p style="font-size:.9rem;color:var(--text-dim);margin:12px 0 22px;">
+      This page has been open for a while.<br>Please refresh to see the latest bookings.
+    </p>
+    <div class="modal-actions" style="justify-content:center;">
+      <button class="btn btn-primary" onclick="location.reload()">Refresh Page</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -549,7 +563,9 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 // SUPABASE CLIENT
 // ══════════════════════════════════════════
 const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+});
 
 // ══════════════════════════════════════════
 // IN-MEMORY STATE  (loaded from Supabase on init, kept in sync via realtime)
@@ -658,26 +674,40 @@ function isWorkHour(s)  {return s>=SLOT_WORK_START        &&s<=SLOT_WORK_END;}
 // ══════════════════════════════════════════
 // SUPABASE DATA LOADING
 // ══════════════════════════════════════════
+// Fetches ALL rows from a table, paging past PostgREST's default 1000-row-per-request cap.
+async function fetchAllRows(table, orderCols){
+  const pageSize=1000;
+  let all=[], from=0;
+  while(true){
+    let query=db.from(table).select('*').range(from, from+pageSize-1);
+    for(const col of orderCols) query=query.order(col,{ascending:true});
+    const {data,error}=await query;
+    if(error) throw error;
+    all=all.concat(data||[]);
+    if(!data || data.length<pageSize) break; // last page
+    from+=pageSize;
+  }
+  return all;
+}
+
 async function loadAllData(){
   deviceSig = getDeviceSig();
   setDbStatus('loading');
   try {
-    const [bRes, blRes, uRes] = await Promise.all([
-      db.from('bookings').select('*'),
-      db.from('blocks').select('*'),
+    const [bData, blData, uRes] = await Promise.all([
+      fetchAllRows('bookings', ['date_str','slot']),
+      fetchAllRows('blocks',   ['date_str','start_time']),
       db.from('users').select('*').order('name',{ascending:true})
     ]);
-    if(bRes.error)  throw bRes.error;
-    if(blRes.error) throw blRes.error;
     // users table may not exist yet — fail gracefully
     if(!uRes.error) usersList = uRes.data||[];
 
     // Rebuild bookingsMap
     bookingsMap = {};
-    for(const row of bRes.data){
+    for(const row of bData){
       bookingsMap[bookingKey(row.date_str, row.slot)] = row;
     }
-    blocksList = blRes.data;
+    blocksList = blData;
     setDbStatus('connected');
     populateDataLists();
     renderCalendar();
@@ -1593,9 +1623,9 @@ async function addBlock(){
   suppressBlockRealtime = true;
   // Small delay lets in-flight realtime events fire and get swallowed by the suppress flag
   await new Promise(r => setTimeout(r, 600));
-  const [{data: freshBlocks}, {data: freshBookings}] = await Promise.all([
-    db.from('blocks').select('*'),
-    db.from('bookings').select('*')
+  const [freshBlocks, freshBookings] = await Promise.all([
+    fetchAllRows('blocks',   ['date_str','start_time']),
+    fetchAllRows('bookings', ['date_str','slot'])
   ]);
   if(freshBlocks){
     // Deduplicate by id just in case
@@ -2218,6 +2248,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 // Only close modal on click if BOTH mousedown AND mouseup landed on the overlay itself
 // (prevents closing when user click-drags text from inside the modal out to the overlay)
 document.querySelectorAll('.modal-overlay').forEach(el=>{
+  if(el.id==='staleModal') return; // force-refresh modal: no dismiss-by-outside-click
   let downOnOverlay=false;
   el.addEventListener('mousedown',e=>{downOnOverlay=(e.target===el);});
   el.addEventListener('mouseup',e=>{
@@ -2365,6 +2396,11 @@ function refreshBookEndTimes(dateStr, startSlot, isInit){
 // ══════════════════════════════════════════
 populateTimeSelects();
 loadAllData().then(()=>subscribeRealtime());
+
+// ── Stale-page force-refresh timer ──
+// TESTING VALUE: 5 seconds. Change STALE_PAGE_MS to 30*60*1000 for production (30 min).
+const STALE_PAGE_MS = 30*60*1000;
+setTimeout(()=>{ document.getElementById('staleModal').classList.add('open'); }, STALE_PAGE_MS);
 </script>
 </body>
 </html>
